@@ -9,6 +9,10 @@
 #include <getopt.h>
 #include <ctype.h>
 #include <signal.h>
+#include <pcap.h>
+#include <arpa/inet.h>
+#include <netinet/ip.h>
+#include <netinet/udp.h>
 
 struct InputData{
     char* interface;

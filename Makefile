@@ -2,6 +2,9 @@
 CC = gcc
 CFLAGS = -g 
 
+# Linker flags
+LDFLAGS = -lpcap
+
 # Source files and headers
 SRCS = dns-monitor.c parse_args.c 
 HEADERS = dns-monitor.h parse_args.h lib.h
@@ -16,7 +19,7 @@ TARGET = dns-monitor
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) $(OBJS) -o $(TARGET)
+	$(CC) $(CFLAGS) $(OBJS) -o $(TARGET) $(LDFLAGS)
 
 %.o: %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@

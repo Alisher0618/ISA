@@ -3,6 +3,7 @@
 #include "parse_args.h"
 
 // ./dns-monitor (-i <interface> | -p <pcapfile>) [-v] [-d <domainsfile>] [-t <translationsfile>]
+// ./dns-monitor -i eth0 -v -d text.txt -t text1.txt
 // max valid number of args: 6
 // min valid number of args: 3
 
