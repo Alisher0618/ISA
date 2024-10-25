@@ -15,8 +15,8 @@ struct InputData parse_arguments(int argc, char **argv){
     get_values.interface = "none";
     get_values.pcapfile = "none";
     get_values.verbose = 0;
-    get_values.domainsfile = "none";
-    get_values.transfile = "none";
+    get_values.domainsfile = NULL;
+    get_values.transfile = NULL;
 
     if(argc < 3 || argc > 8){
         printf("help\n");

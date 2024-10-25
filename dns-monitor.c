@@ -4,6 +4,7 @@
 #include <arpa/inet.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
+#include <netinet/ether.h>
 #include <time.h>
 #include <signal.h>  // Для обработки сигналов
 #include <pcap.h>    // Для работы с pcap
@@ -13,8 +14,11 @@
 
 
 #define DNS_HEADER_SIZE 12
+#define SLL 0x8000
 
 struct InputData input_data;
+
+int eth_sll = 0;
 
 
 volatile int running = 1;  // Флаг работы программы
@@ -25,11 +29,13 @@ int in_offline = 0;
 struct dns_header {
     unsigned short id; // идентификатор
     unsigned short flags;
-    unsigned short qdcount; // количество вопросов
-    unsigned short ancount; // количество ответов
-    unsigned short nscount; // количество авторитетных записей
-    unsigned short arcount; // количество дополнительных записей
+    unsigned short qdcount; // number of questions
+    unsigned short ancount; // number of answers
+    unsigned short nscount; // number of authorities
+    unsigned short arcount; // number of additional
 };
+
+FILE *file;
 
 int allowed_types[7] = {1, 2, 5, 6, 15, 28, 33};
 
@@ -39,23 +45,32 @@ void terminate_program(int signal){
     if (signal == SIGINT || signal == SIGTERM || signal == SIGQUIT){
         pcap_breakloop(handle);  // Прерывание цикла pcap
         pcap_close(handle);
-        printf("Program terminated gracefully.\n");
+        //printf("Program terminated gracefully.\n");
         pcap_freecode(&fp);
+        // Закрытие файла
+        fclose(file);
         exit(EXIT_SUCCESS);
+        
     }else if (in_offline) {
         //print_traffic_offline();
         pcap_close(handle);
-        printf("Program terminated gracefully.\n");
+        //printf("Program terminated gracefully.\n");
         pcap_freecode(&fp);
+
+        // Закрытие файла
+        fclose(file);
+
+        exit(EXIT_SUCCESS);
+    }else{
+        pcap_close(handle);
+        //printf("Program terminated gracefully.\n");
+        pcap_freecode(&fp);
+
+        // Закрытие файла
+        fclose(file);
+
         exit(EXIT_SUCCESS);
     }
-}
-
-// Обработчик сигнала для завершения программы при нажатии Ctrl+C
-void handle_sigint(int sig) {
-    printf("\nCaught signal %d. Exiting...\n", sig);
-    running = 0;
-    pcap_breakloop(handle);  // Прерывание цикла pcap
 }
 
 int isAllowedType(int checkType){
@@ -112,30 +127,402 @@ const u_char *extract_domain_name(const u_char *packet, const u_char *reader, ch
     return reader + 1;  // Возвращаем указатель на следующий байт после доменного имени
 }
 
-// Функция для вывода байтов в шестнадцатеричном виде
-void print_hex(const u_char *data, int len) {
-    for (int i = 0; i < len; i++) {
-        printf("%02X ", data[i]);
+void print_domains(unsigned short type, unsigned short length, const u_char *rdata, const u_char *packet){
+    if (type == 1 && length == 4) { // A запись (IPv4)
+        struct in_addr addr;
+        memcpy(&addr, rdata, sizeof(struct in_addr));
+        printf("%s\n", inet_ntoa(addr));
     }
-    printf("\n");
+    else if (type == 2 && length > 0) { // NS (Name Server) запись
+        char ns_domain_name[256];
+        extract_domain_name(packet + 42, rdata, ns_domain_name);
+        printf("%s\n", ns_domain_name);
+    }
+    else if (type == 28 && length == 16) { // AAAA запись (IPv6)
+        char ipv6_addr[INET6_ADDRSTRLEN];
+        struct in6_addr addr6;
+        memcpy(&addr6, rdata, sizeof(struct in6_addr));
+        inet_ntop(AF_INET6, &addr6, ipv6_addr, sizeof(ipv6_addr));
+        printf("%s\n", ipv6_addr);
+    }
+    else if (type == 15 && length > 0) { // MX запись
+        // MX-запись: первый байт - приоритет, следующий сегмент - доменное имя почтового сервера
+        unsigned short mx_priority;
+        memcpy(&mx_priority, rdata, sizeof(unsigned short)); // Читаем приоритет
+        mx_priority = ntohs(mx_priority); // Преобразуем в сетевой порядок
+        const u_char *mx_data = rdata + 2; // Указатель на доменное имя почтового сервера
+
+        char mx_domain_name[256];
+        mx_data = extract_domain_name(packet + 42, mx_data, mx_domain_name); // Извлекаем доменное имя
+        printf("Priority: %u, Mail Server: %s\n", mx_priority, mx_domain_name);
+    }
+    else if (type == 5 && length > 0) { // CNAME запись
+        char cname_domain_name[1024];
+        const u_char *cname_data = rdata; // Начало RDATA для CNAME
+        cname_data = extract_domain_name(packet + 42, cname_data, cname_domain_name); // Извлекаем доменное имя
+        printf("%s\n", cname_domain_name);  
+    }
+    else if (type == 6) { // SOA (Start of Authority) запись
+        char mname[256], rname[256];
+        rdata = extract_domain_name(packet + 42, rdata, mname); // Primary NS
+        rdata = extract_domain_name(packet + 42, rdata, rname); // Responsible authority's mailbox
+
+        unsigned int serial = ntohl(*(unsigned int *)rdata); rdata += 4;
+        unsigned int refresh = ntohl(*(unsigned int *)rdata); rdata += 4;
+        unsigned int retry = ntohl(*(unsigned int *)rdata); rdata += 4;
+        unsigned int expire = ntohl(*(unsigned int *)rdata); rdata += 4;
+        unsigned int minimum = ntohl(*(unsigned int *)rdata); rdata += 4;
+
+        printf("SOA MNAME: %s, RNAME: %s, SERIAL: %u, REFRESH: %u, RETRY: %u, EXPIRE: %u, MINIMUM: %u\n",
+            mname, rname, serial, refresh, retry, expire, minimum);
+    }
+    else {
+        printf("type: %d, length: %d\n", type, length); // Просто переход на новую строку, если это не A или AAAA запись
+    }
 }
 
+const u_char *question_section(int number, const u_char *packet, const u_char *reader, char *domain_name){
+    int printSection = 1;
+    for (int i = 0; i < number; i++) {
+        //printf("\nreader before: %02x %02x %02x %02x\n", reader[0], reader[1], reader[2], reader[3]);
+        reader = extract_domain_name(packet, reader, domain_name);
+        unsigned short qtype = ntohs(*(unsigned short *)reader);
+        
+        reader += 2; // Пропускаем тип
+        unsigned short qclass = ntohs(*(unsigned short *)reader);
+        reader += 2; // Пропускаем класс
+
+        if(isAllowedType(qtype)){
+            if(printSection){
+                printf("\n[Question Section]\n");
+                printSection = 0;
+            }
+            
+            printf("%s ", domain_name);
+            if(qclass == 1){
+                printf("IN ");
+            }
+
+            if(qtype == 1){
+                printf("A\n");
+            }else if(qtype == 2){
+                printf("NS\n");
+            }else if(qtype == 5){
+                printf("CNAME\n");
+            }else if(qtype == 6){
+                printf("SOA\n");
+            }else if(qtype == 15){
+                printf("MX\n");
+            }else if(qtype == 28){
+                printf("AAAA\n");
+            }else if(qtype == 33){
+                printf("SRV\n");
+            }
+        }
+    }
+
+    return reader;
+}
+
+const u_char *answer_section(int number, const u_char *packet, const u_char *reader, char *domain_name){
+    int printSection = 1;
+    for (int i = 0; i < number; i++) {
+        //printf("\nreader before: %02x %02x %02x %02x\n", reader[0], reader[1], reader[2], reader[3]);
+        //printf("%s\n", domain_name);
+        reader = extract_domain_name(packet + 42, reader, domain_name);
+        //printf("\nreader after: %02x %02x %02x %02x\n", reader[0], reader[1], reader[2], reader[3]);
+        unsigned short atype = ntohs(*(unsigned short *)reader);
+        reader += 2; // Пропускаем тип
+        unsigned short aclass = ntohs(*(unsigned short *)reader);
+        reader += 2; // Пропускаем класс
+        unsigned int ttl = ntohl(*(unsigned int *)reader);
+        reader += 4; // Пропускаем TTL
+        unsigned short rdlength = ntohs(*(unsigned short *)reader);
+        reader += 2; // Пропускаем длину данных
+
+        const u_char *rdata = reader; // Начало RDATA  
+        
+        reader += rdlength; // Переход на следующую запись
+
+        if(isAllowedType(atype)){
+            if(printSection){
+                printf("\n[Answer Section]\n");
+                printSection = 0;
+            }
+            
+            printf("%s ", domain_name);
+            printf("%u ", ttl);
+            if(aclass == 1){
+                printf("IN ");
+            }
+
+            if(atype == 1){
+                printf("A ");
+            }else if(atype == 2){
+                printf("NS ");
+            }else if(atype == 5){
+                printf("CNAME ");
+            }else if(atype == 6){
+                printf("SOA ");
+            }else if(atype == 15){
+                printf("MX ");
+            }else if(atype == 28){
+                printf("AAAA ");
+            }else if(atype == 33){
+                printf("SRV ");
+            }
+
+            print_domains(atype, rdlength, rdata, packet);
+        }
+
+        
+        
+        /*if (atype == 1 && rdlength == 4) { // A запись (IPv4)
+            struct in_addr addr;
+            memcpy(&addr, rdata, sizeof(struct in_addr));
+            printf("%s\n", inet_ntoa(addr));
+        }else if (atype == 28 && rdlength == 16) { // AAAA запись (IPv6)
+            char ipv6_addr[INET6_ADDRSTRLEN];
+            struct in6_addr addr6;
+            memcpy(&addr6, rdata, sizeof(struct in6_addr));
+            inet_ntop(AF_INET6, &addr6, ipv6_addr, sizeof(ipv6_addr));
+            printf("%s\n", ipv6_addr);
+        } else if (atype == 15 && rdlength > 0) { // MX запись
+            // MX-запись: первый байт - приоритет, следующий сегмент - доменное имя почтового сервера
+            unsigned short mx_priority;
+            memcpy(&mx_priority, rdata, sizeof(unsigned short)); // Читаем приоритет
+            mx_priority = ntohs(mx_priority); // Преобразуем в сетевой порядок
+            const u_char *mx_data = rdata + 2; // Указатель на доменное имя почтового сервера
+
+            char mx_domain_name[256];
+            mx_data = extract_domain_name(packet + 42, mx_data, mx_domain_name); // Извлекаем доменное имя
+            printf("Priority: %u, Mail Server: %s\n", mx_priority, mx_domain_name);
+        } else if (atype == 5 && rdlength > 0) { // CNAME запись
+            char cname_domain_name[1024];
+            const u_char *cname_data = rdata; // Начало RDATA для CNAME
+            cname_data = extract_domain_name(packet + 42, cname_data, cname_domain_name); // Извлекаем доменное имя
+            printf("%s\n", cname_domain_name);  
+        }else {
+            printf("atype: %d, rdlength: %d\n", atype, rdlength); // Просто переход на новую строку, если это не A или AAAA запись
+        }*/
+    }
+    return reader;
+
+}
+
+const u_char *authority_section(int number, const u_char *packet, const u_char *reader, char *domain_name){
+    int printSection = 1;
+    for (int i = 0; i < number; i++) {
+        reader = extract_domain_name(packet + 42, reader, domain_name);
+
+        unsigned short atype = ntohs(*(unsigned short *)reader);
+        reader += 2; // Пропускаем тип
+        unsigned short aclass = ntohs(*(unsigned short *)reader);
+        reader += 2; // Пропускаем класс
+        unsigned int ttl = ntohl(*(unsigned int *)reader);
+        reader += 4; // Пропускаем TTL
+        unsigned short rdlength = ntohs(*(unsigned short *)reader);
+        reader += 2; // Пропускаем длину данных
+
+        const u_char *rdata = reader; // Начало RDATA
+        reader += rdlength; // Переход на следующую запись
+
+        if(isAllowedType(atype)){
+            if(printSection){
+                printf("\n[Authority  Section]\n");
+                printSection = 0;
+            }
+            
+            printf("%s ", domain_name);
+            printf("%u ", ttl);
+            if(aclass == 1){
+                printf("IN ");
+            }
+
+            if(atype == 1){
+                printf("A ");
+            }else if(atype == 2){
+                printf("NS ");
+            }else if(atype == 5){
+                printf("CNAME ");
+            }else if(atype == 6){
+                printf("SOA ");
+            }else if(atype == 15){
+                printf("MX ");
+            }else if(atype == 28){
+                printf("AAAA ");
+            }else if(atype == 33){
+                printf("SRV ");
+            }
+
+            print_domains(atype, rdlength, rdata, packet);
+        }
+
+        /*if (atype == 2) { // NS (Name Server) запись
+            char ns_domain_name[256];
+            extract_domain_name(packet + 42, rdata, ns_domain_name);
+            printf("%s\n", ns_domain_name);
+        } else if (atype == 1 && rdlength == 4) { // A запись (IPv4)
+            struct in_addr addr;
+            memcpy(&addr, rdata, sizeof(struct in_addr));
+            printf("%s\n", inet_ntoa(addr));
+        } else if (atype == 28 && rdlength == 16) { // AAAA запись (IPv6)
+            char ipv6_addr[INET6_ADDRSTRLEN];
+            struct in6_addr addr6;
+            memcpy(&addr6, rdata, sizeof(struct in6_addr));
+            inet_ntop(AF_INET6, &addr6, ipv6_addr, sizeof(ipv6_addr));
+            printf("%s\n", ipv6_addr);
+        } else if (atype == 6) { // SOA (Start of Authority) запись
+            char mname[256], rname[256];
+            rdata = extract_domain_name(packet + 42, rdata, mname); // Primary NS
+            rdata = extract_domain_name(packet + 42, rdata, rname); // Responsible authority's mailbox
+
+            unsigned int serial = ntohl(*(unsigned int *)rdata); rdata += 4;
+            unsigned int refresh = ntohl(*(unsigned int *)rdata); rdata += 4;
+            unsigned int retry = ntohl(*(unsigned int *)rdata); rdata += 4;
+            unsigned int expire = ntohl(*(unsigned int *)rdata); rdata += 4;
+            unsigned int minimum = ntohl(*(unsigned int *)rdata); rdata += 4;
+
+            printf("SOA MNAME: %s, RNAME: %s, SERIAL: %u, REFRESH: %u, RETRY: %u, EXPIRE: %u, MINIMUM: %u\n",
+                mname, rname, serial, refresh, retry, expire, minimum);
+        }*/
+        
+    }
+
+    return reader;
+}
+
+const u_char *additional_section(int number, const u_char *packet, const u_char *reader, char *domain_name){
+    int printSection = 1;
+    for (int i = 0; i < number; i++) {
+        reader = extract_domain_name(packet + 42, reader, domain_name);
+
+        unsigned short atype = ntohs(*(unsigned short *)reader);
+        reader += 2; // Пропускаем тип
+        unsigned short aclass = ntohs(*(unsigned short *)reader);
+        reader += 2; // Пропускаем класс
+        unsigned int ttl = ntohl(*(unsigned int *)reader);
+        reader += 4; // Пропускаем TTL
+        unsigned short rdlength = ntohs(*(unsigned short *)reader);
+        reader += 2; // Пропускаем длину данных
+
+        const u_char *rdata = reader; // Начало RDATA
+        reader += rdlength; // Переход на следующую запись
+
+        if(isAllowedType(atype)){
+            if(printSection){
+                printf("\n[Additional  Section]\n");
+                printSection = 0;
+            }
+            
+            printf("%s ", domain_name);
+            printf("%u ", ttl);
+            if(aclass == 1){
+                printf("IN ");
+            }
+
+            if(atype == 1){
+                printf("A ");
+            }else if(atype == 2){
+                printf("NS ");
+            }else if(atype == 5){
+                printf("CNAME ");
+            }else if(atype == 6){
+                printf("SOA ");
+            }else if(atype == 15){
+                printf("MX ");
+            }else if(atype == 28){
+                printf("AAAA ");
+            }else if(atype == 33){
+                printf("SRV ");
+            }
+
+            print_domains(atype, rdlength, rdata, packet);
+        }
+
+        /*if (atype == 2) { // NS (Name Server) запись
+            char ns_domain_name[256];
+            extract_domain_name(packet + 42, rdata, ns_domain_name);
+            printf("%s\n", ns_domain_name);
+        } else if (atype == 1 && rdlength == 4) { // A запись (IPv4)
+            struct in_addr addr;
+            memcpy(&addr, rdata, sizeof(struct in_addr));
+            printf("%s\n", inet_ntoa(addr));
+        } else if (atype == 28 && rdlength == 16) { // AAAA запись (IPv6)
+            char ipv6_addr[INET6_ADDRSTRLEN];
+            struct in6_addr addr6;
+            memcpy(&addr6, rdata, sizeof(struct in6_addr));
+            inet_ntop(AF_INET6, &addr6, ipv6_addr, sizeof(ipv6_addr));
+            printf("%s\n", ipv6_addr);
+        } else if (atype == 6) { // SOA (Start of Authority) запись
+            char mname[256], rname[256];
+            rdata = extract_domain_name(packet + 42, rdata, mname); // Primary NS
+            rdata = extract_domain_name(packet + 42, rdata, rname); // Responsible authority's mailbox
+
+            unsigned int serial = ntohl(*(unsigned int *)rdata); rdata += 4;
+            unsigned int refresh = ntohl(*(unsigned int *)rdata); rdata += 4;
+            unsigned int retry = ntohl(*(unsigned int *)rdata); rdata += 4;
+            unsigned int expire = ntohl(*(unsigned int *)rdata); rdata += 4;
+            unsigned int minimum = ntohl(*(unsigned int *)rdata); rdata += 4;
+
+            printf("SOA MNAME: %s, RNAME: %s, SERIAL: %u, REFRESH: %u, RETRY: %u, EXPIRE: %u, MINIMUM: %u\n",
+                mname, rname, serial, refresh, retry, expire, minimum);
+        }*/
+        
+    }
+
+    return reader;
+}
 
 // Функция для обработки пакетов
 void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char *packet) {
-    struct ip *iph = (struct ip *)(packet + 14);  // Смещение до IP заголовка
-    struct udphdr *udph = (struct udphdr *)(packet + 14 + iph->ip_hl * 4);  // Смещение до UDP заголовка
-    struct dns_header *dnsh = (struct dns_header *)(packet + 14 + iph->ip_hl * 4 + sizeof(struct udphdr)); 
 
+    /*struct sll_header {
+        uint16_t sll_family;   // Тип канала (AF_PACKET)
+        uint16_t sll_protocol; // Протокол уровня 3
+        uint8_t  sll_pkttype;   // Тип пакета
+        uint8_t  sll_hatype;    // Тип канала
+        uint16_t sll_halen;     // Длина адреса канала
+        uint8_t  sll_addr[8];   // MAC адрес источника
+        uint16_t sll_index;     // Индекс интерфейса
+    };*/
+    
+    struct ether_header {
+        uint8_t  ether_dhost[6]; // MAC-адрес назначения
+        uint8_t  ether_shost[6]; // MAC-адрес источника
+        uint16_t ether_type;      // Тип протокола
+    };
+
+    // Получаем указатель на заголовок Ethernet
+    struct ether_header *eth_hdr = (struct ether_header *)packet;
+    //struct sll_header *sll_hdr = (struct sll_header *)packet;
+
+
+    struct ip *iph;
+    struct udphdr *udph;
+    struct dns_header *dnsh;
+    const u_char *ip_header;
+
+    if (ntohs(eth_hdr->ether_type) == ETHERTYPE_IP) {
+        iph = (struct ip *)(packet + 14);  // Смещение до IP заголовка
+        udph = (struct udphdr *)(packet + 14 + iph->ip_hl * 4);  // Смещение до UDP заголовка
+        dnsh = (struct dns_header *)(packet + 14 + iph->ip_hl * 4 + sizeof(struct udphdr)); 
+        ip_header = packet + 14;
+    }/*else if (ntohs(sll_hdr->sll_index) == ETHERTYPE_IP) {
+        iph = (struct ip *)(packet + 16);  // Смещение до IP заголовка
+        udph = (struct udphdr *)(packet + 16 + iph->ip_hl * 4);  // Смещение до UDP заголовка
+        dnsh = (struct dns_header *)(packet + 16 + iph->ip_hl * 4 + sizeof(struct udphdr)); 
+        ip_header = packet + 16;
+    }*/
     char time_str[20]; 
     struct tm *ltime = localtime(&header->ts.tv_sec);
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", ltime);  
 
-    const u_char *ip_header = packet + 14;
+    
 
     unsigned char protocol = ip_header[9];
     if (protocol != 17) { // 17 - это номер для UDP
-        fprintf(stderr, "protocol is not udp\n");
+        fprintf(stderr, "%d protocol is not udp\n", protocol);
         exit(EXIT_FAILURE);
     }
 
@@ -155,6 +542,7 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
     // DNS заголовок начинается после UDP заголовка (8 байт)
     const u_char *dns_header_data = udp_header + 8;
     struct dns_header *dns = (struct dns_header *)dns_header_data;
+    
 
     if(!input_data.verbose){
         printf("%s ", time_str);
@@ -194,198 +582,33 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
         char domain_name[1024];
        
         
+        // Question Section
         if(ntohs(dns->qdcount) >= 1){
-            printf("\n[Question Section]\n");
+            reader = question_section(ntohs(dns->qdcount), packet, reader, domain_name);
         }
-        const u_char *new_reader;
         
-        for (int i = 0; i < ntohs(dns->qdcount); i++) {
-            new_reader = reader;
-            reader = extract_domain_name(packet, reader, domain_name);
-            unsigned short qtype = ntohs(*(unsigned short *)reader);
-            
-            reader += 2; // Пропускаем тип
-            unsigned short qclass = ntohs(*(unsigned short *)reader);
-            reader += 2; // Пропускаем класс
-
-            // Добавляем точку в конец доменного имени
-            //printf("Question %d: %s., Type: %d, Class: %d\n", i + 1, domain_name, qtype, qclass);
-            
-            /*if(isAllowedType(qtype) == 0){
-                continue;
-            }*/
-
-            printf("%s ", domain_name);
-            if(qclass == 1){
-                printf("IN ");
-            }
-
-            if(qtype == 1){
-                printf("A\n");
-            }else if(qtype == 28){
-                printf("AAAA\n");
-            }else if(qtype == 15){
-                printf("MX\n");
-            }else if(qtype == 5){
-                printf("CNAME\n");
-            }else if(qtype == 65){
-                printf("HTTPS\n");
-            }
-
-        }
-
-
+        // Answer Section
         if(ntohs(dns->ancount) >= 1){
-            printf("\n[Answer Section]\n");
+            reader = answer_section(ntohs(dns->ancount), packet, reader, domain_name);
         }
-
-        // Обработка секции Answer
-
         int len;
-        for (int i = 0; i < ntohs(dns->ancount); i++) {
-            //printf("\nreader before: %02x %02x %02x %02x\n", reader[0], reader[1], reader[2], reader[3]);
-            //printf("%s\n", domain_name);
-            reader = extract_domain_name(packet + 42, reader, domain_name);
-            //printf("\nreader after: %02x %02x %02x %02x\n", reader[0], reader[1], reader[2], reader[3]);
-            unsigned short atype = ntohs(*(unsigned short *)reader);
-            reader += 2; // Пропускаем тип
-            unsigned short aclass = ntohs(*(unsigned short *)reader);
-            reader += 2; // Пропускаем класс
-            unsigned int ttl = ntohl(*(unsigned int *)reader);
-            reader += 4; // Пропускаем TTL
-            unsigned short rdlength = ntohs(*(unsigned short *)reader);
-            reader += 2; // Пропускаем длину данных
-
-            const u_char *rdata = reader; // Начало RDATA  
-            
-            reader += rdlength; // Переход на следующую запись
-            
-            printf("%s ", domain_name);
-            printf("%u ", ttl);
-            if(aclass == 1){
-                printf("IN ");
-            }
-
-            if(atype == 1){
-                printf("A ");
-            }else if(atype == 28){
-                printf("AAAA ");
-            }else if(atype == 15){
-                printf("MX ");
-            }else if(atype == 5){
-                printf("CNAME ");
-            }else if(atype == 65){
-                printf("HTTPS ");
-            }else{
-                printf("Unknown atype ");
-            }
-            // Пример: если это A-запись (IPv4)
-            if (atype == 1 && rdlength == 4) { // A запись (IPv4)
-                struct in_addr addr;
-                memcpy(&addr, rdata, sizeof(struct in_addr));
-                printf("%s\n", inet_ntoa(addr));
-            }else if (atype == 28 && rdlength == 16) { // AAAA запись (IPv6)
-                char ipv6_addr[INET6_ADDRSTRLEN];
-                struct in6_addr addr6;
-                memcpy(&addr6, rdata, sizeof(struct in6_addr));
-                inet_ntop(AF_INET6, &addr6, ipv6_addr, sizeof(ipv6_addr));
-                printf("%s\n", ipv6_addr);
-            } else if (atype == 15 && rdlength > 0) { // MX запись
-                // MX-запись: первый байт - приоритет, следующий сегмент - доменное имя почтового сервера
-                unsigned short mx_priority;
-                memcpy(&mx_priority, rdata, sizeof(unsigned short)); // Читаем приоритет
-                mx_priority = ntohs(mx_priority); // Преобразуем в сетевой порядок
-                const u_char *mx_data = rdata + 2; // Указатель на доменное имя почтового сервера
-
-                char mx_domain_name[256];
-                mx_data = extract_domain_name(packet + 42, mx_data, mx_domain_name); // Извлекаем доменное имя
-                printf("Priority: %u, Mail Server: %s\n", mx_priority, mx_domain_name);
-            } else if (atype == 5 && rdlength > 0) { // CNAME запись
-                char cname_domain_name[1024];
-                const u_char *cname_data = rdata; // Начало RDATA для CNAME
-                cname_data = extract_domain_name(packet + 42, cname_data, domain_name); // Извлекаем доменное имя
-                printf("%s\n", domain_name);  
-            }else {
-                printf("atype: %d, rdlength: %d\n", atype, rdlength); // Просто переход на новую строку, если это не A или AAAA запись
-            }
-        }
-
-
-        if(ntohs(dns->nscount) >= 1){
-            printf("\n[Authority  Section]\n");
-        }
-
-        for (int i = 0; i < ntohs(dns->nscount); i++) {
-            reader = extract_domain_name(packet + 42, reader, domain_name);
-
-            unsigned short atype = ntohs(*(unsigned short *)reader);
-            reader += 2; // Пропускаем тип
-            unsigned short aclass = ntohs(*(unsigned short *)reader);
-            reader += 2; // Пропускаем класс
-            unsigned int ttl = ntohl(*(unsigned int *)reader);
-            reader += 4; // Пропускаем TTL
-            unsigned short rdlength = ntohs(*(unsigned short *)reader);
-            reader += 2; // Пропускаем длину данных
-
-            const u_char *rdata = reader; // Начало RDATA
-            reader += rdlength; // Переход на следующую запись
-
-            printf("%s ", domain_name);
-            printf("%u ", ttl);
-            if(aclass == 1){
-                printf("IN ");
-            }
-
-            if(atype == 1){
-                printf("A ");
-            }else if(atype == 28){
-                printf("AAAA ");
-            }else if(atype == 15){
-                printf("MX ");
-            }else if(atype == 5){
-                printf("CNAME ");
-            }else{
-                printf("Unknown atype ");
-            }
-
-            if (atype == 2) { // NS (Name Server) запись
-                char ns_domain_name[256];
-                extract_domain_name(packet, rdata, ns_domain_name);
-                printf("NS: %s\n", ns_domain_name);
-            } else if (atype == 1 && rdlength == 4) { // A запись (IPv4)
-                struct in_addr addr;
-                memcpy(&addr, rdata, sizeof(struct in_addr));
-                printf("%s\n", inet_ntoa(addr));
-            } else if (atype == 28 && rdlength == 16) { // AAAA запись (IPv6)
-                char ipv6_addr[INET6_ADDRSTRLEN];
-                struct in6_addr addr6;
-                memcpy(&addr6, rdata, sizeof(struct in6_addr));
-                inet_ntop(AF_INET6, &addr6, ipv6_addr, sizeof(ipv6_addr));
-                printf("%s\n", ipv6_addr);
-            } else if (atype == 6) { // SOA (Start of Authority) запись
-                char mname[256], rname[256];
-                rdata = extract_domain_name(packet + 42, rdata, mname); // Primary NS
-                rdata = extract_domain_name(packet + 42, rdata, rname); // Responsible authority's mailbox
-
-                unsigned int serial = ntohl(*(unsigned int *)rdata); rdata += 4;
-                unsigned int refresh = ntohl(*(unsigned int *)rdata); rdata += 4;
-                unsigned int retry = ntohl(*(unsigned int *)rdata); rdata += 4;
-                unsigned int expire = ntohl(*(unsigned int *)rdata); rdata += 4;
-                unsigned int minimum = ntohl(*(unsigned int *)rdata); rdata += 4;
-
-                printf("SOA MNAME: %s, RNAME: %s, SERIAL: %u, REFRESH: %u, RETRY: %u, EXPIRE: %u, MINIMUM: %u\n",
-                    mname, rname, serial, refresh, retry, expire, minimum);
-            } else {
-                printf("Unknown authority record type: %d\n", atype);
-            }
-        }
-
         
+
+        // Authority Section
+        if(ntohs(dns->nscount) >= 1){
+            reader = authority_section(ntohs(dns->nscount), packet, reader, domain_name);
+        }
+        
+         // Запись строки в файл
+        fprintf(file, "Привет, мир!\n");
+        
+
+        // Additional Section
         if(ntohs(dns->arcount) >= 1){
-            printf("\n[Additional  Section]\n");
+            reader = additional_section(ntohs(dns->arcount), packet, reader, domain_name);
         }
 
-        for (int i = 0; i < ntohs(dns->arcount); i++) {
+        /*for (int i = 0; i < ntohs(dns->arcount); i++) {
             reader = extract_domain_name(packet + 42, reader, domain_name);
 
             unsigned short atype = ntohs(*(unsigned short *)reader);
@@ -440,8 +663,8 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
             } else {
                 printf("Unknown additional record type: %d\n", atype);
             }
-        }
-
+        }*/
+    
     }
 
     
@@ -462,6 +685,7 @@ pcap_t *handle_interface(struct InputData input_data){
         fprintf(stderr, "Couldn't open device: %s\n", errbuf);
         exit(EXIT_FAILURE);
     }
+    
 
     char filter_exp[] = "udp port 53";
     if (pcap_compile(handle, &fp, filter_exp, 0, PCAP_NETMASK_UNKNOWN) == -1) {
@@ -510,12 +734,22 @@ void start_monitoring(struct InputData input_data){
     
     if(strcmp(input_data.interface, "none") != 0){
         printf("interface: %s\n", input_data.interface);//delete
-        printf("=========\n");//delete
+        printf("=========\n\n");//delete
         handle = handle_interface(input_data);
     }else{
         printf("pcap file: %s\n", input_data.pcapfile);//delete
-        printf("=========\n");//delete
+        printf("=========\n\n");//delete
         handle = handle_pcap_file(input_data);
+    }
+
+    if(input_data.transfile != NULL){
+        file = fopen(input_data.transfile, "w");
+    
+        // Проверка успешности открытия файла
+        if (file == NULL) {
+            perror("Ошибка открытия файла");
+            exit(EXIT_FAILURE);
+        }    
     }
 
     
@@ -524,17 +758,12 @@ void start_monitoring(struct InputData input_data){
     }
 
     terminate_program(0);
-    //pcap_close(handle);
-    //printf("Program terminated gracefully.\n");
-    //pcap_freecode(&fp);
 }
 
 // Основная функция
 int main(int argc, char *argv[]) {
    
     input_data = parse_arguments(argc, argv);
-
-    //signal(SIGINT, handle_sigint);
 
     printf("argc: %d\n", argc);
     
