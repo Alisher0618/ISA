@@ -85,10 +85,10 @@ int isAllowedType(int checkType){
 
 
 // Функция для извлечения имени домена из DNS пакета
-int sum_off = 0;
+int jumped;  // Флаг, указывающий на то, что мы "прыгнули" в другое место
 const u_char *extract_domain_name(const u_char *packet, const u_char *reader, char *domain_name) {
     int p = 0;  // Индекс для доменного имени
-    int jumped = 0;  // Флаг, указывающий на то, что мы "прыгнули" в другое место
+    jumped = 0;
     int jump_offset = 0; // Переменная для хранения позиции при прыжке
     const u_char *orig_reader = reader; // Сохраняем оригинальный указатель для возврата, если прыгнули
     char tmp[1024];
@@ -99,9 +99,8 @@ const u_char *extract_domain_name(const u_char *packet, const u_char *reader, ch
         if (*reader == 0xC0){  // Указатель на другую часть пакета
 
             offset = (*reader & 0x3F) << 8 | *(reader + 1);  // Получаем 14-битное смещение
+            //orig_reader = reader;
             reader = packet + offset;  // Переход к указанному месту в пакете
-            sum_off += offset;
-
             jumped = 1;  // Указываем, что мы "прыгнули"
             
         } else {
@@ -119,11 +118,10 @@ const u_char *extract_domain_name(const u_char *packet, const u_char *reader, ch
 
     domain_name[p] = '\0';  // Завершаем строку (убираем последнюю точку)
 
-    sum_off = 0;
     if (jumped) {
         return orig_reader + 2;
     }
-    
+
     return reader + 1;  // Возвращаем указатель на следующий байт после доменного имени
 }
 
@@ -154,7 +152,7 @@ void print_domains(unsigned short type, unsigned short length, const u_char *rda
 
         char mx_domain_name[256];
         mx_data = extract_domain_name(packet + 42, mx_data, mx_domain_name); // Извлекаем доменное имя
-        printf("Priority: %u, Mail Server: %s\n", mx_priority, mx_domain_name);
+        printf("%u %s\n", mx_priority, mx_domain_name);
     }
     else if (type == 5 && length > 0) { // CNAME запись
         char cname_domain_name[1024];
@@ -164,17 +162,34 @@ void print_domains(unsigned short type, unsigned short length, const u_char *rda
     }
     else if (type == 6) { // SOA (Start of Authority) запись
         char mname[256], rname[256];
-        rdata = extract_domain_name(packet + 42, rdata, mname); // Primary NS
-        rdata = extract_domain_name(packet + 42, rdata, rname); // Responsible authority's mailbox
+        const u_char *vdata = rdata; 
+        //printf("\n%02x %02x %02x %02x\n", rdata[0], rdata[1], rdata[2], rdata[3]);
+        vdata = extract_domain_name(packet + 42, vdata, mname); // Primary NS
+        //printf("%02x %02x %02x %02x\n", rdata[0], rdata[1], rdata[2], rdata[3]);
+        if(jumped){
+            vdata = extract_domain_name(packet + 42, vdata + 4, rname); // Responsible authority's mailbox
+            jumped = 0;
+        }else{
+            vdata = extract_domain_name(packet + 42, vdata, rname); // Responsible authority's mailbox
+        }
 
-        unsigned int serial = ntohl(*(unsigned int *)rdata); rdata += 4;
-        unsigned int refresh = ntohl(*(unsigned int *)rdata); rdata += 4;
-        unsigned int retry = ntohl(*(unsigned int *)rdata); rdata += 4;
-        unsigned int expire = ntohl(*(unsigned int *)rdata); rdata += 4;
-        unsigned int minimum = ntohl(*(unsigned int *)rdata); rdata += 4;
+        unsigned int serial = ntohl(*(unsigned int *)rdata); vdata += 4;
+        unsigned int refresh = ntohl(*(unsigned int *)rdata); vdata += 4;
+        unsigned int retry = ntohl(*(unsigned int *)rdata); vdata += 4;
+        unsigned int expire = ntohl(*(unsigned int *)rdata); vdata += 4;
+        unsigned int minimum = ntohl(*(unsigned int *)rdata); vdata += 4;
 
-        printf("SOA MNAME: %s, RNAME: %s, SERIAL: %u, REFRESH: %u, RETRY: %u, EXPIRE: %u, MINIMUM: %u\n",
-            mname, rname, serial, refresh, retry, expire, minimum);
+        printf("%s %s\n", mname, rname);
+    }else if (type == 33) { // SRV запись
+        const u_char *adata = rdata;
+        unsigned short priority = ntohs(*(unsigned short *)adata); adata += 2;
+        unsigned short weight = ntohs(*(unsigned short *)adata); adata += 2;
+        unsigned short port = ntohs(*(unsigned short *)adata); adata += 2;
+        
+        char target_domain_name[256];
+        adata = extract_domain_name(packet + 42, adata, target_domain_name); // Извлекаем целевой домен
+
+        printf("%s\n", target_domain_name);
     }
     else {
         printf("type: %d, length: %d\n", type, length); // Просто переход на новую строку, если это не A или AAAA запись
@@ -518,16 +533,28 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
     struct tm *ltime = localtime(&header->ts.tv_sec);
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", ltime);  
 
+    // UDP заголовок после IP-заголовка (IP-заголовок = 20 байт)
+    const u_char *udp_header;
+    if(ip_header[0] == 0x45){ // IPv4
+        if (ip_header[9] != 17) { // 17 - это номер для UDP
+            fprintf(stderr, "ERROR: Protocol is not udp\n");
+            exit(EXIT_FAILURE);
+        }
+        udp_header = ip_header + 20;
+
+    }/*else{
+        printf("ipv6 +40\n");
+        if (ip_header[6] != 17) { // 17 - это номер для UDP
+            fprintf(stderr, "ERROR: Protocol is not udp\n");
+            exit(EXIT_FAILURE);
+        }
+        udp_header = ip_header + 40;
+    }*/
+
     
 
-    unsigned char protocol = ip_header[9];
-    if (protocol != 17) { // 17 - это номер для UDP
-        fprintf(stderr, "%d protocol is not udp\n", protocol);
-        exit(EXIT_FAILURE);
-    }
-
-    // UDP заголовок после IP-заголовка (IP-заголовок = 20 байт)
-    const u_char *udp_header = ip_header + 20;
+    
+   
 
     // Определяем порты (источник и получатель)
     unsigned short src_port = ntohs(*(unsigned short * )(udp_header));
@@ -587,12 +614,14 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
             reader = question_section(ntohs(dns->qdcount), packet, reader, domain_name);
         }
         
+
         // Answer Section
         if(ntohs(dns->ancount) >= 1){
             reader = answer_section(ntohs(dns->ancount), packet, reader, domain_name);
         }
         int len;
-        
+
+
 
         // Authority Section
         if(ntohs(dns->nscount) >= 1){
