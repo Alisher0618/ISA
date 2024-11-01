@@ -160,6 +160,13 @@ void print_domains(unsigned short type, unsigned short length, const u_char *rda
     else if (type == 2 && length > 0) { // NS (Name Server) запись
         char ns_domain_name[256];
         extract_domain_name(packet + 42, rdata, ns_domain_name);
+
+        if(write_domains){
+            fclose(file_domains);
+            file_domains = fopen(input_data.domainsfile, "r");
+
+            write_to_domain(ns_domain_name);
+        }
         printf("%s\n", ns_domain_name);
     }
     else if (type == 28 && length == 16) { // AAAA запись (IPv6)
