@@ -35,41 +35,64 @@ struct dns_header {
     unsigned short arcount; // number of additional
 };
 
-FILE *file;
+FILE *file_domains, *file_translations;
 
 int allowed_types[7] = {1, 2, 5, 6, 15, 28, 33};
 
 int num_of_info = 0;
-
+int write_domains;
+int write_translations;
 void terminate_program(int signal){
     if (signal == SIGINT || signal == SIGTERM || signal == SIGQUIT){
         pcap_breakloop(handle);  // Прерывание цикла pcap
         pcap_close(handle);
         //printf("Program terminated gracefully.\n");
-        pcap_freecode(&fp);
-        // Закрытие файла
-        fclose(file);
-        exit(EXIT_SUCCESS);
-        
     }else if (in_offline) {
         //print_traffic_offline();
         pcap_close(handle);
         //printf("Program terminated gracefully.\n");
-        pcap_freecode(&fp);
-
-        // Закрытие файла
-        fclose(file);
-
-        exit(EXIT_SUCCESS);
     }else{
         pcap_close(handle);
         //printf("Program terminated gracefully.\n");
-        pcap_freecode(&fp);
+    }
+    pcap_freecode(&fp);
 
-        // Закрытие файла
-        fclose(file);
+    // Закрытие файла
+    if (write_domains){
+        fclose(file_domains);
+    }
+    
+    if (write_translations){
+        fclose(file_translations);
+    }
 
-        exit(EXIT_SUCCESS);
+    exit(EXIT_SUCCESS);
+}
+
+int domain_exists(char *domain) {
+    char line[256];
+    while (fgets(line, sizeof(line), file_domains) != NULL) {
+        line[strcspn(line, "\n")] = '\0';
+        if (strcmp(line, domain) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+void write_to_domain(char *domain_name){
+    char domain[256];
+    strcpy(domain, domain_name);
+    domain[strlen(domain)-1] = '\0';
+
+    if(!domain_exists(domain)){
+        fclose(file_domains);   //closing for reading
+        file_domains = fopen(input_data.domainsfile, "a");
+        
+        fprintf(file_domains, "%s\n", domain);
+        
+        fclose(file_domains);   //closing for adding
+        file_domains = fopen(input_data.domainsfile, "r");
     }
 }
 
@@ -86,6 +109,7 @@ int isAllowedType(int checkType){
 
 // Функция для извлечения имени домена из DNS пакета
 int jumped;  // Флаг, указывающий на то, что мы "прыгнули" в другое место
+int is_soa;
 const u_char *extract_domain_name(const u_char *packet, const u_char *reader, char *domain_name) {
     int p = 0;  // Индекс для доменного имени
     jumped = 0;
@@ -97,9 +121,11 @@ const u_char *extract_domain_name(const u_char *packet, const u_char *reader, ch
     int step = 0;
     while (*reader != 0) {
         if (*reader == 0xC0){  // Указатель на другую часть пакета
-
+            if(is_soa){
+                orig_reader = reader;
+                is_soa = 0;
+            }
             offset = (*reader & 0x3F) << 8 | *(reader + 1);  // Получаем 14-битное смещение
-            //orig_reader = reader;
             reader = packet + offset;  // Переход к указанному месту в пакете
             jumped = 1;  // Указываем, что мы "прыгнули"
             
@@ -164,10 +190,11 @@ void print_domains(unsigned short type, unsigned short length, const u_char *rda
         char mname[256], rname[256];
         const u_char *vdata = rdata; 
         //printf("\n%02x %02x %02x %02x\n", rdata[0], rdata[1], rdata[2], rdata[3]);
+        is_soa = 1;
         vdata = extract_domain_name(packet + 42, vdata, mname); // Primary NS
-        //printf("%02x %02x %02x %02x\n", rdata[0], rdata[1], rdata[2], rdata[3]);
+        //printf(" %02x %02x %02x %02x\n", rdata[0], rdata[1], rdata[2], rdata[3]);
         if(jumped){
-            vdata = extract_domain_name(packet + 42, vdata + 4, rname); // Responsible authority's mailbox
+            vdata = extract_domain_name(packet + 42, vdata, rname); // Responsible authority's mailbox
             jumped = 0;
         }else{
             vdata = extract_domain_name(packet + 42, vdata, rname); // Responsible authority's mailbox
@@ -178,6 +205,20 @@ void print_domains(unsigned short type, unsigned short length, const u_char *rda
         unsigned int retry = ntohl(*(unsigned int *)rdata); vdata += 4;
         unsigned int expire = ntohl(*(unsigned int *)rdata); vdata += 4;
         unsigned int minimum = ntohl(*(unsigned int *)rdata); vdata += 4;
+
+        if(write_domains){
+            fclose(file_domains);
+            file_domains = fopen(input_data.domainsfile, "r");
+
+            write_to_domain(mname);
+        }
+
+        if(write_domains){
+            fclose(file_domains);
+            file_domains = fopen(input_data.domainsfile, "r");
+
+            write_to_domain(rname);
+        }
 
         printf("%s %s\n", mname, rname);
     }else if (type == 33) { // SRV запись
@@ -211,6 +252,13 @@ const u_char *question_section(int number, const u_char *packet, const u_char *r
             if(printSection){
                 printf("\n[Question Section]\n");
                 printSection = 0;
+            }
+
+            if(write_domains){
+                fclose(file_domains);
+                file_domains = fopen(input_data.domainsfile, "r");
+
+                write_to_domain(domain_name);
             }
             
             printf("%s ", domain_name);
@@ -264,7 +312,14 @@ const u_char *answer_section(int number, const u_char *packet, const u_char *rea
                 printf("\n[Answer Section]\n");
                 printSection = 0;
             }
-            
+
+            if(write_domains){
+                fclose(file_domains);
+                file_domains = fopen(input_data.domainsfile, "r");
+
+                write_to_domain(domain_name);
+            }
+
             printf("%s ", domain_name);
             printf("%u ", ttl);
             if(aclass == 1){
@@ -347,6 +402,13 @@ const u_char *authority_section(int number, const u_char *packet, const u_char *
                 printf("\n[Authority  Section]\n");
                 printSection = 0;
             }
+
+            if(write_domains){
+                fclose(file_domains);
+                file_domains = fopen(input_data.domainsfile, "r");
+
+                write_to_domain(domain_name);
+            }
             
             printf("%s ", domain_name);
             printf("%u ", ttl);
@@ -428,6 +490,13 @@ const u_char *additional_section(int number, const u_char *packet, const u_char 
             if(printSection){
                 printf("\n[Additional  Section]\n");
                 printSection = 0;
+            }
+
+            if(write_domains){
+                fclose(file_domains);
+                file_domains = fopen(input_data.domainsfile, "r");
+
+                write_to_domain(domain_name);
             }
             
             printf("%s ", domain_name);
@@ -627,10 +696,6 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
         if(ntohs(dns->nscount) >= 1){
             reader = authority_section(ntohs(dns->nscount), packet, reader, domain_name);
         }
-        
-         // Запись строки в файл
-        fprintf(file, "Привет, мир!\n");
-        
 
         // Additional Section
         if(ntohs(dns->arcount) >= 1){
@@ -771,11 +836,23 @@ void start_monitoring(struct InputData input_data){
         handle = handle_pcap_file(input_data);
     }
 
-    if(input_data.transfile != NULL){
-        file = fopen(input_data.transfile, "w");
+    if(input_data.domainsfile != NULL){
+        write_domains = 1;
+        file_domains = fopen(input_data.domainsfile, "w");
     
         // Проверка успешности открытия файла
-        if (file == NULL) {
+        if (file_domains == NULL) {
+            perror("Ошибка открытия файла");
+            exit(EXIT_FAILURE);
+        }    
+    }
+
+    if(input_data.transfile != NULL){
+        write_translations = 1;
+        file_translations = fopen(input_data.transfile, "w");
+    
+        // Проверка успешности открытия файла
+        if (file_translations == NULL) {
             perror("Ошибка открытия файла");
             exit(EXIT_FAILURE);
         }    
