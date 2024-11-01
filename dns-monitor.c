@@ -15,6 +15,7 @@
 
 #define DNS_HEADER_SIZE 12
 #define SLL 0x8000
+#define SIZE 256
 
 struct InputData input_data;
 
@@ -70,7 +71,7 @@ void terminate_program(int signal){
 }
 
 int domain_exists(char *domain) {
-    char line[256];
+    char line[SIZE];
     while (fgets(line, sizeof(line), file_domains) != NULL) {
         line[strcspn(line, "\n")] = '\0';
         if (strcmp(line, domain) == 0) {
@@ -80,8 +81,21 @@ int domain_exists(char *domain) {
     return 0;
 }
 
+int translation_exists(char *domain, char* ip_address) {
+    char line[SIZE];
+    strcat(domain, " ");
+    strcat(domain, ip_address);
+    while (fgets(line, sizeof(line), file_translations) != NULL) {
+        line[strcspn(line, "\n")] = '\0';
+        if (strcmp(line, domain) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 void write_to_domain(char *domain_name){
-    char domain[256];
+    char domain[SIZE];
     strcpy(domain, domain_name);
     domain[strlen(domain)-1] = '\0';
 
@@ -95,6 +109,24 @@ void write_to_domain(char *domain_name){
         file_domains = fopen(input_data.domainsfile, "r");
     }
 }
+
+void write_to_translation(char *domain_name, char* ip_address){
+    char row[SIZE];
+    strcpy(row, domain_name);
+    row[strlen(row)-1] = '\0';
+    
+    if(!translation_exists(row, ip_address)){
+        fclose(file_translations);   //closing for reading
+        file_translations = fopen(input_data.transfile, "a");
+        
+        fprintf(file_translations, "%s\n", row);
+        //fprintf(file_translations, "%s\n", ip_address); 
+        
+        fclose(file_translations);   //closing for adding
+        file_translations = fopen(input_data.transfile, "r");
+    }
+}
+
 
 int isAllowedType(int checkType){
     for (int i = 0; i < 7; i++){
@@ -113,10 +145,8 @@ int is_soa;
 const u_char *extract_domain_name(const u_char *packet, const u_char *reader, char *domain_name) {
     int p = 0;  // Индекс для доменного имени
     jumped = 0;
-    int jump_offset = 0; // Переменная для хранения позиции при прыжке
     const u_char *orig_reader = reader; // Сохраняем оригинальный указатель для возврата, если прыгнули
-    char tmp[1024];
-    char next[1024] = {0};
+    char next[SIZE] = {0};
     int offset; 
     int step = 0;
     while (*reader != 0) {
@@ -151,14 +181,20 @@ const u_char *extract_domain_name(const u_char *packet, const u_char *reader, ch
     return reader + 1;  // Возвращаем указатель на следующий байт после доменного имени
 }
 
-void print_domains(unsigned short type, unsigned short length, const u_char *rdata, const u_char *packet){
+void print_domains(unsigned short type, unsigned short length, const u_char *rdata, const u_char *packet, char *domain_name){
     if (type == 1 && length == 4) { // A запись (IPv4)
         struct in_addr addr;
         memcpy(&addr, rdata, sizeof(struct in_addr));
         printf("%s\n", inet_ntoa(addr));
+        if(write_translations){
+            fclose(file_translations);
+            file_translations = fopen(input_data.transfile, "r");
+
+            write_to_translation(domain_name, inet_ntoa(addr));  
+        }
     }
     else if (type == 2 && length > 0) { // NS (Name Server) запись
-        char ns_domain_name[256];
+        char ns_domain_name[SIZE];
         extract_domain_name(packet + 42, rdata, ns_domain_name);
 
         if(write_domains){
@@ -175,6 +211,13 @@ void print_domains(unsigned short type, unsigned short length, const u_char *rda
         memcpy(&addr6, rdata, sizeof(struct in6_addr));
         inet_ntop(AF_INET6, &addr6, ipv6_addr, sizeof(ipv6_addr));
         printf("%s\n", ipv6_addr);
+
+        if(write_translations){
+            fclose(file_translations);
+            file_translations = fopen(input_data.transfile, "r");
+
+            write_to_translation(domain_name, ipv6_addr);    
+        }
     }
     else if (type == 15 && length > 0) { // MX запись
         // MX-запись: первый байт - приоритет, следующий сегмент - доменное имя почтового сервера
@@ -183,18 +226,18 @@ void print_domains(unsigned short type, unsigned short length, const u_char *rda
         mx_priority = ntohs(mx_priority); // Преобразуем в сетевой порядок
         const u_char *mx_data = rdata + 2; // Указатель на доменное имя почтового сервера
 
-        char mx_domain_name[256];
+        char mx_domain_name[SIZE];
         mx_data = extract_domain_name(packet + 42, mx_data, mx_domain_name); // Извлекаем доменное имя
         printf("%u %s\n", mx_priority, mx_domain_name);
     }
     else if (type == 5 && length > 0) { // CNAME запись
-        char cname_domain_name[1024];
+        char cname_domain_name[SIZE];
         const u_char *cname_data = rdata; // Начало RDATA для CNAME
         cname_data = extract_domain_name(packet + 42, cname_data, cname_domain_name); // Извлекаем доменное имя
         printf("%s\n", cname_domain_name);  
     }
     else if (type == 6) { // SOA (Start of Authority) запись
-        char mname[256], rname[256];
+        char mname[SIZE], rname[SIZE];
         const u_char *vdata = rdata; 
         //printf("\n%02x %02x %02x %02x\n", rdata[0], rdata[1], rdata[2], rdata[3]);
         is_soa = 1;
@@ -234,10 +277,10 @@ void print_domains(unsigned short type, unsigned short length, const u_char *rda
         unsigned short weight = ntohs(*(unsigned short *)adata); adata += 2;
         unsigned short port = ntohs(*(unsigned short *)adata); adata += 2;
         
-        char target_domain_name[256];
-        adata = extract_domain_name(packet + 42, adata, target_domain_name); // Извлекаем целевой домен
+        char srv_domain_name[SIZE];
+        adata = extract_domain_name(packet + 42, adata, srv_domain_name); // Извлекаем целевой домен
 
-        printf("%s\n", target_domain_name);
+        printf("%s\n", srv_domain_name);
     }
     else {
         printf("type: %d, length: %d\n", type, length); // Просто переход на новую строку, если это не A или AAAA запись
@@ -349,7 +392,7 @@ const u_char *answer_section(int number, const u_char *packet, const u_char *rea
                 printf("SRV ");
             }
 
-            print_domains(atype, rdlength, rdata, packet);
+            print_domains(atype, rdlength, rdata, packet, domain_name);
         }
 
         
@@ -439,7 +482,7 @@ const u_char *authority_section(int number, const u_char *packet, const u_char *
                 printf("SRV ");
             }
 
-            print_domains(atype, rdlength, rdata, packet);
+            print_domains(atype, rdlength, rdata, packet, domain_name);
         }
 
         /*if (atype == 2) { // NS (Name Server) запись
@@ -528,7 +571,7 @@ const u_char *additional_section(int number, const u_char *packet, const u_char 
                 printf("SRV ");
             }
 
-            print_domains(atype, rdlength, rdata, packet);
+            print_domains(atype, rdlength, rdata, packet, domain_name);
         }
 
         /*if (atype == 2) { // NS (Name Server) запись
@@ -627,11 +670,6 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
         udp_header = ip_header + 40;
     }*/
 
-    
-
-    
-   
-
     // Определяем порты (источник и получатель)
     unsigned short src_port = ntohs(*(unsigned short * )(udp_header));
     unsigned short dst_port = ntohs(*(unsigned short * )(udp_header + 2));
@@ -682,22 +720,17 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
         );
         // Читаем Question секцию
         const u_char *reader = dns_header_data + 12;  // Переход к Question секции
-        char domain_name[1024];
-       
+        char domain_name[SIZE];
         
         // Question Section
         if(ntohs(dns->qdcount) >= 1){
             reader = question_section(ntohs(dns->qdcount), packet, reader, domain_name);
         }
         
-
         // Answer Section
         if(ntohs(dns->ancount) >= 1){
             reader = answer_section(ntohs(dns->ancount), packet, reader, domain_name);
         }
-        int len;
-
-
 
         // Authority Section
         if(ntohs(dns->nscount) >= 1){
@@ -768,12 +801,6 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
     
     }
 
-    
-    //printf("[Question Section]\n");
-
-    // Здесь будет код для разбора секции Question и вывода её содержимого.
-    // Можно создать отдельную функцию для разбора записи.
-
     printf("====================\n");
 }
 
@@ -787,7 +814,6 @@ pcap_t *handle_interface(struct InputData input_data){
         exit(EXIT_FAILURE);
     }
     
-
     char filter_exp[] = "udp port 53";
     if (pcap_compile(handle, &fp, filter_exp, 0, PCAP_NETMASK_UNKNOWN) == -1) {
         fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
@@ -873,7 +899,6 @@ void start_monitoring(struct InputData input_data){
     terminate_program(0);
 }
 
-// Основная функция
 int main(int argc, char *argv[]) {
    
     input_data = parse_arguments(argc, argv);
@@ -881,8 +906,6 @@ int main(int argc, char *argv[]) {
     printf("argc: %d\n", argc);
     
     start_monitoring(input_data);
-
-    
 
     return 0;
 }
