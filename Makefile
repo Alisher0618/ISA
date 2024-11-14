@@ -3,7 +3,7 @@ CC = gcc
 CFLAGS = -g 
 
 # Linker flags
-LDFLAGS = -lpcap -Wall -Wextra
+LDFLAGS = -lpcap -Wall -Wextra -pedantic
 
 # Source files and headers
 SRCS = dns-monitor.c parse_args.c 
