@@ -1,3 +1,10 @@
+/**
+* @file dns-monitor.h
+* @brief Impelementation of DNS communication
+*
+* @author Alisher Mazhirinov (xmazhi00)
+*
+*/
 #ifndef DNS_MONITOR
 #define DNS_MONITOR
 

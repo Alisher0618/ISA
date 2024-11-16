@@ -1,3 +1,10 @@
+/**
+* @file parse_args.h
+* @brief Parsing input arguments
+*
+* @author Alisher Mazhirinov (xmazhi00)
+*
+*/
 #ifndef PARSE_ARGS
 #define PARSE_ARGS
 

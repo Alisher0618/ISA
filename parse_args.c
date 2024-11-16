@@ -1,3 +1,10 @@
+/**
+* @file parse_args.c
+* @brief Parsing input arguments
+*
+* @author Alisher Mazhirinov (xmazhi00)
+*
+*/
 #include "parse_args.h"
 
 // ./dns-monitor (-i <interface> | -p <pcapfile>) [-v] [-d <domainsfile>] [-t <translationsfile>]
@@ -79,7 +86,7 @@ struct InputData parse_arguments(int argc, char **argv){
         
         }
 
-        if (get_values.pcapfile == "none" && get_values.interface == "none"){
+        if (strcmp(get_values.pcapfile, "none") == 0 && strcmp(get_values.interface, "none") == 0){
             printf("ERROR: Expected either pcapfile or interface\n");
             printf("Printing help message...\n");
             printHelp();
@@ -87,43 +94,13 @@ struct InputData parse_arguments(int argc, char **argv){
             
         }
         
-        if(get_values.pcapfile != "none" && get_values.interface != "none"){
+        if(strcmp(get_values.pcapfile, "none") != 0 && strcmp(get_values.interface, "none") != 0){
             printf("ERROR: Expected at least pcapfile or interface\n");
             printf("Printing help message...\n");
             printHelp();
             exit(EXIT_FAILURE);
         }
 
-        /*for(int i = 1; i < argc; i++){
-            if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0){
-                printf("help:)\n");
-                exit(0);
-            }
-            else if(strcmp(argv[i], "-i") == 0){
-                get_values.interface = argv[i+1];
-                //i++;
-            }
-            else if(strcmp(argv[i], "-p") == 0){
-                get_values.pcapfile = argv[i+1];
-                //i++;
-            }
-            else if (strcmp(argv[i], "-v") == 0){
-                get_values.verbose = 1;
-            }
-            else if (strcmp(argv[i], "-d") == 0){
-                get_values.domainsfile = argv[i+1];
-                //i++;
-            }
-            else if (strcmp(argv[i], "-t") == 0){
-                get_values.transfile = argv[i+1];
-                //i++;
-            }
-            else{
-                printHelp();
-                printf("%s\n", argv[i]);
-                exit(EXIT_FAILURE);
-            }
-        }*/
     }
 
     return get_values;

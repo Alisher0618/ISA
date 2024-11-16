@@ -1,3 +1,10 @@
+/**
+* @file dns-monitor.c
+* @brief Impelementation of DNS communication
+*
+* @author Alisher Mazhirinov (xmazhi00)
+*
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -184,37 +191,26 @@ const uint8_t *extract_domain_name(const uint8_t *packet, const uint8_t *reader,
     int p = 0;  
     jumped = 0;
     const uint8_t *orig_reader = reader;
-    const uint8_t *tmp_reader = reader;
-    char next[SIZE] = {0};
-    int offset, off_1, off_2; 
-    int step = 0;
-    int was_in_else = 0;
+    //char next[SIZE] = {0};
+    int offset;
+    //int step = 0;
 
-    int num = 0;
-    //printf("\n%02x %02x %02x %02x\n", reader[0], reader[1], reader[2], reader[3]);
+    int one_jump = 1;
     while (*reader != 0) {
         if ((*reader & 0xC0) == 0xC0){ 
-            num++;
-            //tmp_reader = reader;
-            if(is_soa || was_in_else){
-                //printf("here\n");
+            if(one_jump){
                 orig_reader = reader;
-                //was_in_else = 0;
+                one_jump = 0;
             }
-            off_1 = (*reader & 0x3F) << 8;
-            
             offset = (*reader & 0x3F) << 8 | *(reader + 1);
-            //printf("OFF_1: %d\n", offset);
             reader = packet + offset; 
-            jumped = 1;
-            
+            jumped = 1;       
         } else {
-            was_in_else = 1;
             for (int i = 0; i < *reader; i++) {
-                next[step++] = *(reader + 1 + i);
+                //next[step++] = *(reader + 1 + i);
                 domain_name[p++] = *(reader + 1 + i);
             }
-            next[step++] = '.';  
+            //next[step++] = '.';  
             domain_name[p++] = '.';
 
             reader += *reader + 1; 
@@ -224,12 +220,13 @@ const uint8_t *extract_domain_name(const uint8_t *packet, const uint8_t *reader,
     domain_name[p] = '\0';
 
     if (jumped) {
-        if (num == 1) {
+        /*if (num == 1) {
             //printf("\n%02x %02x %02x %02x %d\n", orig_reader[0 - 1], orig_reader[1], orig_reader[2], orig_reader[3], was_in_else);
             return orig_reader + 2;
         }else{
             return tmp_reader + 2;
-        }
+        }*/
+        return orig_reader + 2;
     }
 
     return reader + 1;
@@ -311,11 +308,11 @@ void print_domains(unsigned short type, unsigned short length, const uint8_t *rd
         }
         is_soa = 0;
 
-        unsigned int serial = ntohl(*(unsigned int *)rdata); vdata += 4;
-        unsigned int refresh = ntohl(*(unsigned int *)rdata); vdata += 4;
-        unsigned int retry = ntohl(*(unsigned int *)rdata); vdata += 4;
-        unsigned int expire = ntohl(*(unsigned int *)rdata); vdata += 4;
-        unsigned int minimum = ntohl(*(unsigned int *)rdata); vdata += 4;
+        vdata += 4; //skipping serial
+        vdata += 4; //skipping refresh
+        vdata += 4; //skipping retry
+        vdata += 4; //skipping expire
+        vdata += 4; //skipping minimum
 
         if(write_domains){
             fclose(file_domains);
@@ -324,19 +321,12 @@ void print_domains(unsigned short type, unsigned short length, const uint8_t *rd
             write_to_domain(mname);
         }
 
-        if(write_domains){
-            fclose(file_domains);
-            file_domains = fopen(input_data.domainsfile, "r");
-
-            write_to_domain(rname);
-        }
-
         printf("%s %s\n", mname, rname);
     }else if (type == 33) { // SRV record
         const uint8_t *adata = rdata;
-        unsigned short priority = ntohs(*(unsigned short *)adata); adata += 2;
-        unsigned short weight = ntohs(*(unsigned short *)adata); adata += 2;
-        unsigned short port = ntohs(*(unsigned short *)adata); adata += 2;
+        adata += 2; //skipping priority
+        adata += 2; //skipping weight
+        adata += 2; // skipping port
         
         char srv_domain_name[SIZE];
         adata = extract_domain_name(packet + jump_to_dns, adata, srv_domain_name);
@@ -417,12 +407,9 @@ const uint8_t *question_section(int number, const uint8_t *packet, const uint8_t
 const uint8_t *answer_section(int number, const uint8_t *packet, const uint8_t *reader, char *domain_name){
     int printSection = 1;
     for (int i = 0; i < number; i++) {
-        //printf("%d\n", jump_to_dns);
-        //printf("\n%02x %02x %02x %02x\n", (packet + jump_to_dns)[0], (packet + jump_to_dns)[1], (packet + jump_to_dns)[2], (packet + jump_to_dns)[3]);
+        
         reader = extract_domain_name(packet + jump_to_dns, reader, domain_name);
-        //printf("domain: %s\n", domain_name);
         unsigned short atype = ntohs(*(unsigned short *)reader);
-        //printf("atype: %d\n", atype);
         reader += 2;
         unsigned short aclass = ntohs(*(unsigned short *)reader);
         reader += 2; 
@@ -490,7 +477,6 @@ const uint8_t *authority_section(int number, const uint8_t *packet, const uint8_
     int printSection = 1;
     for (int i = 0; i < number; i++) {
         reader = extract_domain_name(packet + jump_to_dns, reader, domain_name);
-
         unsigned short atype = ntohs(*(unsigned short *)reader);
         reader += 2; 
         unsigned short aclass = ntohs(*(unsigned short *)reader);
@@ -616,6 +602,90 @@ const uint8_t *additional_section(int number, const uint8_t *packet, const uint8
     return reader;
 }
 
+const uint8_t *sections_handle(int number, const uint8_t *packet, const uint8_t *reader, char *domain_name, char *section){
+    int printSection = 1;
+    unsigned int ttl;
+    unsigned short atype, aclass, rdlength;
+    const uint8_t *rdata;
+    for (int i = 0; i < number; i++) {
+        reader = extract_domain_name(packet + jump_to_dns, reader, domain_name);        
+        atype = ntohs(*(unsigned short *)reader);
+        reader += 2;
+        aclass = ntohs(*(unsigned short *)reader);
+        reader += 2;
+
+        if(strcmp(section, "ques") != 0){
+            ttl = ntohl(*(unsigned int *)reader);
+            reader += 4;
+            rdlength = ntohs(*(unsigned short *)reader);
+            reader += 2;
+
+            rdata = reader;
+            reader += rdlength; 
+        }
+       
+        if(isAllowedType(atype)){
+            if(printSection){
+                if(strcmp(section, "ques") == 0){
+                    printf("\n[Question Section]\n");
+                }else if(strcmp(section, "answ") == 0){
+                    printf("\n[Answer Section]\n");
+                }else if(strcmp(section, "auth") == 0){
+                    printf("\n[Authority Section]\n");
+                }else{
+                    printf("\n[Additional Section]\n");
+                }
+                
+                printSection = 0;
+            }
+
+            if(write_domains){
+                fclose(file_domains);
+                file_domains = fopen(input_data.domainsfile, "r");
+
+                write_to_domain(domain_name);
+            }
+            
+            printf("%s ", domain_name);
+
+            if(strcmp(section, "ques") != 0){
+                printf("%u ", ttl);
+            }
+            
+            if(aclass == 1){
+                printf("IN ");
+            }
+
+            if(atype == 1){
+                printf("A");
+            }else if(atype == 2){
+                printf("NS");
+            }else if(atype == 5){
+                printf("CNAME");
+            }else if(atype == 6){
+                printf("SOA");
+            }else if(atype == 15){
+                printf("MX");
+            }else if(atype == 28){
+                printf("AAAA");
+            }else if(atype == 33){
+                printf("SRV");
+            }
+
+            if(strcmp(section, "ques") != 0){
+                printf(" ");
+                print_domains(atype, rdlength, rdata, packet, domain_name);
+            }else{
+                printf("\n");
+            }
+    
+        }
+
+    }
+
+    return reader;
+}
+
 /**
  * @brief Function that handles all incoming DNS packages
  * 
@@ -624,22 +694,14 @@ const uint8_t *additional_section(int number, const uint8_t *packet, const uint8
  * @param packet 
  */
 void packet_handler(uint8_t *args, const struct pcap_pkthdr *header, const uint8_t *packet) {
-
-    /*struct sll_header {
-        uint16_t sll_family;   // Тип канала (AF_PACKET)
-        uint16_t sll_protocol; // Протокол уровня 3
-        uint8_t  sll_pkttype;   // Тип пакета
-        uint8_t  sll_hatype;    // Тип канала
-        uint16_t sll_halen;     // Длина адреса канала
-        uint8_t  sll_addr[8];   // MAC адрес источника
-        uint16_t sll_index;     // Индекс интерфейса
-    };*/
-
-    struct ip *iph;
-    struct ip6_hdr *ip6h;
-    struct udphdr *udph;
-    struct dns_header *dnsh;
+    struct ip *ipv4_h;
+    struct ip6_hdr *ipv6_h;
+    struct udphdr *udp_h;
+    struct dns_header *dns_h;
     const uint8_t *ip_header;
+
+    (void) args;
+    (void) header;
 
     int ip_version = 0; // 0 - ipv4, 1 - ipv6
     int interface_type = 0; // 0 - ethernet, 1 - sll
@@ -647,16 +709,10 @@ void packet_handler(uint8_t *args, const struct pcap_pkthdr *header, const uint8
     if(dlt == DLT_EN10MB){ // Ethernet
         jump_to_dns = SKIP_IF_ETHERNET;
         interface_type = 0;
-        //iph = (struct ip *)(packet + 14);  // Jump to IP header
-        //udph = (struct udphdr *)(packet + 14 + iph->ip_hl * 4);  // Jump to UDP header
-        //dnsh = (struct dns_header *)(packet + 14 + iph->ip_hl * 4 + sizeof(struct udphdr)); 
         ip_header = packet + 14;
     }else if(dlt == DLT_LINUX_SLL){ // Linux cooked
         jump_to_dns = SKIP_IF_SLL;
         interface_type = 1;
-        //iph = (struct ip *)(packet + 16);  // Jump to IP header
-        //udph = (struct udphdr *)(packet + 16 + iph->ip_hl * 4);  // Jump to UDP header
-        //dnsh = (struct dns_header *)(packet + 16 + iph->ip_hl * 4 + sizeof(struct udphdr)); 
         ip_header = packet + 16;
     }
 
@@ -673,9 +729,9 @@ void packet_handler(uint8_t *args, const struct pcap_pkthdr *header, const uint8
         }
         int skip_bytes = interface_type == 0 ? 14 : 16;
 
-        iph = (struct ip *)(packet + skip_bytes);
-        udph = (struct udphdr *)(packet + skip_bytes + iph->ip_hl * 4);  // Jump to UDP header
-        dnsh = (struct dns_header *)(packet + skip_bytes + iph->ip_hl * 4 + sizeof(struct udphdr)); 
+        ipv4_h = (struct ip *)(packet + skip_bytes);
+        udp_h = (struct udphdr *)(packet + skip_bytes + ipv4_h->ip_hl * 4);  // Jump to UDP header
+        dns_h = (struct dns_header *)(packet + skip_bytes + ipv4_h->ip_hl * 4 + sizeof(struct udphdr)); 
 
         udp_header = ip_header + 20;
         ip_version = 0;
@@ -690,22 +746,21 @@ void packet_handler(uint8_t *args, const struct pcap_pkthdr *header, const uint8
 
     }
     else if((ip_header[0] & 0xF0) == 0x60){
-        //printf("ipv6 +40\n");
-        if (ip_header[6] != 17) { // 17 - это номер для UDP
+        if (ip_header[6] != 17) {
             fprintf(stderr, "ERROR: Protocol is not udp\n");
             exit(EXIT_FAILURE);
         }
         jump_to_dns += 20; // add another 20 bytes
         int skip_bytes = interface_type == 0 ? 14 : 16;
 
-        ip6h = (struct ip6_hdr *)(packet + skip_bytes);
-        udph = (struct udphdr *)(packet + skip_bytes + sizeof(struct ip6_hdr));
-        dnsh = (struct dns_header *)(packet + skip_bytes + sizeof(struct ip6_hdr) + sizeof(struct udphdr));
+        ipv6_h = (struct ip6_hdr *)(packet + skip_bytes);
+        udp_h = (struct udphdr *)(packet + skip_bytes + sizeof(struct ip6_hdr));
+        dns_h = (struct dns_header *)(packet + skip_bytes + sizeof(struct ip6_hdr) + sizeof(struct udphdr));
 
         udp_header = ip_header + 40;
         ip_version = 1;
-        //printf("AAAAAAAAAAAAAAAAAAAAAAA: %d, %d\n", ntohs(udph->uh_sport), ntohs(udph->uh_dport));
-        if (ntohs(udph->uh_sport) != 53 && ntohs(udph->uh_dport) != 53) {
+
+        if (ntohs(udp_h->uh_sport) != 53 && ntohs(udp_h->uh_dport) != 53) {
             fprintf(stderr, "ERROR: It is not udp package\n");
             exit(EXIT_FAILURE);
         }
@@ -714,15 +769,6 @@ void packet_handler(uint8_t *args, const struct pcap_pkthdr *header, const uint8
         exit(EXIT_FAILURE);
     }
 
-    // Gettings src and dst ports
-    /*unsigned short src_port = ntohs(*(unsigned short * )(udp_header));
-    unsigned short dst_port = ntohs(*(unsigned short * )(udp_header + 2));
-
-    if (src_port != 53 && dst_port != 53) {
-        fprintf(stderr, "ERROR: It is not udp package\n");
-        exit(EXIT_FAILURE);
-    }*/
-
     // DNS header starts after UDP header in 8 bytes
     const uint8_t *dns_header_data = udp_header + 8;
     struct dns_header *dns = (struct dns_header *)dns_header_data;
@@ -730,11 +776,11 @@ void packet_handler(uint8_t *args, const struct pcap_pkthdr *header, const uint8
 
     if(!input_data.verbose){
         printf("%s ", time_str);
-        printf("%s ", inet_ntoa(iph->ip_src));
+        printf("%s ", inet_ntoa(ipv4_h->ip_src));
         printf("-> ");
-        printf("%s ", inet_ntoa(iph->ip_dst));
+        printf("%s ", inet_ntoa(ipv4_h->ip_dst));
 
-        if(((ntohs(dnsh->flags) >> 15) & 0x1) == 0){
+        if(((ntohs(dns_h->flags) >> 15) & 0x1) == 0){
             printf(" (Q %d/%d/%d/%d)\n", ntohs(dns->qdcount), ntohs(dns->ancount), ntohs(dns->nscount), ntohs(dns->arcount));
         }else{
             printf(" (R %d/%d/%d/%d)\n", ntohs(dns->qdcount), ntohs(dns->ancount), ntohs(dns->nscount), ntohs(dns->arcount));
@@ -745,77 +791,66 @@ void packet_handler(uint8_t *args, const struct pcap_pkthdr *header, const uint8
             printf("\n");
         }
         if(ip_version == 0){
-            // Вывод информации об IPv4-пакете
-
             printf("Timestamp: %s\n", time_str);
-            printf("SrcIP: %s\n", inet_ntoa(iph->ip_src));
-            printf("DstIP: %s\n", inet_ntoa(iph->ip_dst));
-            printf("SrcPort: UDP/%d\n", ntohs(udph->uh_sport));
-            printf("DstPort: UDP/%d\n", ntohs(udph->uh_dport));
-            printf("Identifier: 0x%04X\n", ntohs(dnsh->id));
+            printf("SrcIP: %s\n", inet_ntoa(ipv4_h->ip_src));
+            printf("DstIP: %s\n", inet_ntoa(ipv4_h->ip_dst));
+            printf("SrcPort: UDP/%d\n", ntohs(udp_h->uh_sport));
+            printf("DstPort: UDP/%d\n", ntohs(udp_h->uh_dport));
+            printf("Identifier: 0x%04X\n", ntohs(dns_h->id));
         }else{
             char src_addr[INET6_ADDRSTRLEN], dst_addr[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, &(ip6h->ip6_src), src_addr, sizeof(src_addr));
-            inet_ntop(AF_INET6, &(ip6h->ip6_dst), dst_addr, sizeof(dst_addr));
+            inet_ntop(AF_INET6, &(ipv6_h->ip6_src), src_addr, sizeof(src_addr));
+            inet_ntop(AF_INET6, &(ipv6_h->ip6_dst), dst_addr, sizeof(dst_addr));
 
             printf("Timestamp: %s\n", time_str);
             printf("SrcIP: %s\n", src_addr);
             printf("DstIP: %s\n", dst_addr);
-            printf("SrcPort: UDP/%d\n", ntohs(udph->uh_sport));
-            printf("DstPort: UDP/%d\n", ntohs(udph->uh_dport));
-            printf("Identifier: 0x%04X\n", ntohs(dnsh->id));
+            printf("SrcPort: UDP/%d\n", ntohs(udp_h->uh_sport));
+            printf("DstPort: UDP/%d\n", ntohs(udp_h->uh_dport));
+            printf("Identifier: 0x%04X\n", ntohs(dns_h->id));
         }
-        /*printf("Timestamp: %s\n", time_str);
-        printf("SrcIP: %s\n", inet_ntoa(iph->ip_src));
-        printf("DstIP: %s\n", inet_ntoa(iph->ip_dst));
-        printf("SrcPort: UDP/%d\n", ntohs(udph->uh_sport));
-        printf("DstPort: UDP/%d\n", ntohs(udph->uh_dport));
-        printf("Identifier: 0x%04X\n", ntohs(dnsh->id));*/
         printf("Flags: QR=%d, OPCODE=%d, AA=%d, TC=%d, RD=%d, RA=%d, AD=%d, CD=%d, RCODE=%d\n",
-            (ntohs(dnsh->flags) >> 15) & 0x1, // QR
-            (ntohs(dnsh->flags) >> 11) & 0xF, // OPCODE
-            (ntohs(dnsh->flags) >> 10) & 0x1, // AA
-            (ntohs(dnsh->flags) >> 9) & 0x1,  // TC
-            (ntohs(dnsh->flags) >> 8) & 0x1,  // RD
-            (ntohs(dnsh->flags) >> 7) & 0x1,  // RA
-            (ntohs(dnsh->flags) >> 5) & 0x1,  // AD
-            (ntohs(dnsh->flags) >> 4) & 0x1,  // CD
-            ntohs(dnsh->flags) & 0xF           // RCODE
+            (ntohs(dns_h->flags) >> 15) & 0x1, // QR
+            (ntohs(dns_h->flags) >> 11) & 0xF, // OPCODE
+            (ntohs(dns_h->flags) >> 10) & 0x1, // AA
+            (ntohs(dns_h->flags) >> 9) & 0x1,  // TC
+            (ntohs(dns_h->flags) >> 8) & 0x1,  // RD
+            (ntohs(dns_h->flags) >> 7) & 0x1,  // RA
+            (ntohs(dns_h->flags) >> 5) & 0x1,  // AD
+            (ntohs(dns_h->flags) >> 4) & 0x1,  // CD
+            ntohs(dns_h->flags) & 0xF           // RCODE
         );
 
         const uint8_t *reader = dns_header_data + 12;  // Jump to Question section
         char domain_name[SIZE];
         
         // Question Section
-        //printf("unsupported: %d\n", unsupported_type);
         if(ntohs(dns->qdcount) >= 1){
-            reader = question_section(ntohs(dns->qdcount), packet, reader, domain_name);
+            //reader = question_section(ntohs(dns->qdcount), packet, reader, domain_name);
+            reader = sections_handle(ntohs(dns->qdcount), packet, reader, domain_name, "ques");
         }
-        
+
         // Answer Section
-        //printf("unsupported: %d\n", unsupported_type);
-        if(ntohs(dns->ancount) >= 1 && unsupported_type == 0){
-            reader = answer_section(ntohs(dns->ancount), packet, reader, domain_name);
+        if(ntohs(dns->ancount) >= 1){
+            //reader = answer_section(ntohs(dns->ancount), packet, reader, domain_name);
+            reader = sections_handle(ntohs(dns->ancount), packet, reader, domain_name, "answ");
         }
 
         // Authority Section
-        //printf("unsupported: %d\n", unsupported_type);
-        if(ntohs(dns->nscount) >= 1 && unsupported_type == 0){
-            reader = authority_section(ntohs(dns->nscount), packet, reader, domain_name);
+        if(ntohs(dns->nscount) >= 1){
+            //reader = authority_section(ntohs(dns->nscount), packet, reader, domain_name);
+            reader = sections_handle(ntohs(dns->nscount), packet, reader, domain_name, "auth");
         }
 
         // Additional Section
-        //printf("unsupported: %d, count: %d\n", unsupported_type, ntohs(dns->arcount));
-        if(ntohs(dns->arcount) >= 1 && unsupported_type == 0){
-            //printf("aaa\n");
-            reader = additional_section(ntohs(dns->arcount), packet, reader, domain_name);
+        if(ntohs(dns->arcount) >= 1){
+            //reader = additional_section(ntohs(dns->arcount), packet, reader, domain_name);
+            reader = sections_handle(ntohs(dns->arcount), packet, reader, domain_name, "addi");
         }
 
-        
-        //memset(domain_name, 0, sizeof(domain_name));
+        printf("====================\n");
     }
-    unsupported_type = 0;
-    printf("====================\n");
+    
 }
 
 /**
