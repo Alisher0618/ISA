@@ -1,0 +1,53 @@
+Timestamp: 2024-10-25 16:20:16
+SrcIP: 172.19.121.89
+DstIP: 172.19.112.1
+SrcPort: UDP/38592
+DstPort: UDP/53
+Identifier: 0xA2BE
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+
+[Question Section]
+google.com. IN A
+====================
+
+Timestamp: 2024-10-25 16:20:16
+SrcIP: 172.19.112.1
+DstIP: 172.19.121.89
+SrcPort: UDP/53
+DstPort: UDP/38592
+Identifier: 0xA2BE
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+
+[Question Section]
+google.com. IN A
+
+[Answer Section]
+google.com. 0 IN A 142.251.36.142
+====================
+
+Timestamp: 2024-10-25 16:20:16
+SrcIP: 172.19.121.89
+DstIP: 172.19.112.1
+SrcPort: UDP/50773
+DstPort: UDP/53
+Identifier: 0x9249
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+
+[Question Section]
+google.com. IN AAAA
+====================
+
+Timestamp: 2024-10-25 16:20:16
+SrcIP: 172.19.112.1
+DstIP: 172.19.121.89
+SrcPort: UDP/53
+DstPort: UDP/50773
+Identifier: 0x9249
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+
+[Question Section]
+google.com. IN AAAA
+
+[Answer Section]
+google.com. 0 IN AAAA 2a00:1450:4014:80e::200e
+====================

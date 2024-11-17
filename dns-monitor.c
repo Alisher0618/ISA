@@ -430,6 +430,7 @@ void packet_handler(uint8_t *args, const struct pcap_pkthdr *header, const uint8
         ip_header = packet + 16;
     }
 
+
     char time_str[20]; 
     struct tm *ltime = localtime(&header->ts.tv_sec);
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", ltime);  
@@ -490,9 +491,20 @@ void packet_handler(uint8_t *args, const struct pcap_pkthdr *header, const uint8
 
     if(!input_data.verbose){
         printf("%s ", time_str);
-        printf("%s ", inet_ntoa(ipv4_h->ip_src));
-        printf("-> ");
-        printf("%s ", inet_ntoa(ipv4_h->ip_dst));
+        if(ip_version == 0){
+            printf("%s ", inet_ntoa(ipv4_h->ip_src));
+            printf("-> ");
+            printf("%s ", inet_ntoa(ipv4_h->ip_dst));
+        }else{
+            char src_addr[INET6_ADDRSTRLEN], dst_addr[INET6_ADDRSTRLEN];
+            inet_ntop(AF_INET6, &(ipv6_h->ip6_src), src_addr, sizeof(src_addr));
+            inet_ntop(AF_INET6, &(ipv6_h->ip6_dst), dst_addr, sizeof(dst_addr));
+
+            printf("%s ", src_addr);
+            printf("-> ");
+            printf("%s ", dst_addr);
+        }
+        
 
         if(((ntohs(dns_h->flags) >> 15) & 0x1) == 0){
             printf(" (Q %d/%d/%d/%d)\n", ntohs(dns->qdcount), ntohs(dns->ancount), ntohs(dns->nscount), ntohs(dns->arcount));
