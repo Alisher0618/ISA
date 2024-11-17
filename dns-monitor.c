@@ -169,8 +169,7 @@ int isAllowedType(int checkType){
     return 0;
 }
 
-int jumped;  
-int is_soa;
+int jumped;
 /**
  * @brief Function for processing domain names in DNS part of the whole package
  *        It allows to receive domain names by reading them and saving to domain_name variable
@@ -279,7 +278,6 @@ void print_domains(unsigned short type, unsigned short length, const uint8_t *rd
     else if (type == 6) { // SOA record
         char mname[SIZE], rname[SIZE];
         const uint8_t *vdata = rdata; 
-        is_soa = 1;
         vdata = receive_domain(packet + jump_to_dns, vdata, mname); // Primary NS
         if(jumped){
             vdata = receive_domain(packet + jump_to_dns, vdata, rname); // Responsible authority's mailbox
@@ -287,7 +285,6 @@ void print_domains(unsigned short type, unsigned short length, const uint8_t *rd
         }else{
             vdata = receive_domain(packet + jump_to_dns, vdata, rname); // Responsible authority's mailbox
         }
-        is_soa = 0;
 
         vdata += 4; //skipping serial
         vdata += 4; //skipping refresh
