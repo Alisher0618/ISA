@@ -1,0 +1,145 @@
+Timestamp: 2024-10-16 21:28:32
+SrcIP: 192.168.1.102
+DstIP: 192.168.1.1
+SrcPort: UDP/64416
+DstPort: UDP/53
+Identifier: 0xDCDD
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+
+[Question Section]
+applet-bundles.grammarly.net. IN A
+====================
+
+Timestamp: 2024-10-16 21:28:32
+SrcIP: 192.168.1.1
+DstIP: 192.168.1.102
+SrcPort: UDP/53
+DstPort: UDP/64416
+Identifier: 0xDCDD
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=1, AD=0, CD=0, RCODE=0
+
+[Question Section]
+applet-bundles.grammarly.net. IN A
+
+[Answer Section]
+applet-bundles.grammarly.net. 28 IN A 18.66.27.69
+applet-bundles.grammarly.net. 28 IN A 18.66.27.90
+applet-bundles.grammarly.net. 28 IN A 18.66.27.129
+applet-bundles.grammarly.net. 28 IN A 18.66.27.14
+====================
+
+Timestamp: 2024-10-16 21:28:42
+SrcIP: 192.168.1.102
+DstIP: 192.168.1.1
+SrcPort: UDP/52000
+DstPort: UDP/53
+Identifier: 0x96D2
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+
+[Question Section]
+ocsp.sectigo.com. IN A
+====================
+
+Timestamp: 2024-10-16 21:28:42
+SrcIP: 192.168.1.1
+DstIP: 192.168.1.102
+SrcPort: UDP/53
+DstPort: UDP/52000
+Identifier: 0x96D2
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=1, AD=0, CD=0, RCODE=0
+
+[Question Section]
+ocsp.sectigo.com. IN A
+
+[Answer Section]
+ocsp.sectigo.com. 3227 IN CNAME ocsp.comodoca.com.cdn.cloudflare.net.
+ocsp.comodoca.com.cdn.cloudflare.net. 160 IN A 104.18.38.233
+ocsp.comodoca.com.cdn.cloudflare.net. 160 IN A 172.64.149.23
+====================
+
+Timestamp: 2024-10-16 21:28:52
+SrcIP: 192.168.1.102
+DstIP: 192.168.1.1
+SrcPort: UDP/52000
+DstPort: UDP/53
+Identifier: 0x44B3
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+
+[Question Section]
+ocsp.godaddy.com. IN A
+====================
+
+Timestamp: 2024-10-16 21:28:52
+SrcIP: 192.168.1.1
+DstIP: 192.168.1.102
+SrcPort: UDP/53
+DstPort: UDP/52000
+Identifier: 0x44B3
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=1, AD=0, CD=0, RCODE=0
+
+[Question Section]
+ocsp.godaddy.com. IN A
+
+[Answer Section]
+ocsp.godaddy.com. 2757 IN CNAME ocsp.godaddy.com.akadns.net.
+ocsp.godaddy.com.akadns.net. 35 IN A 92.204.85.1
+====================
+
+Timestamp: 2024-10-16 21:28:59
+SrcIP: 192.168.1.102
+DstIP: 192.168.1.1
+SrcPort: UDP/52000
+DstPort: UDP/53
+Identifier: 0x80C4
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+
+[Question Section]
+ocsp2.globalsign.com. IN A
+====================
+
+Timestamp: 2024-10-16 21:28:59
+SrcIP: 192.168.1.1
+DstIP: 192.168.1.102
+SrcPort: UDP/53
+DstPort: UDP/52000
+Identifier: 0x80C4
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=1, AD=0, CD=0, RCODE=0
+
+[Question Section]
+ocsp2.globalsign.com. IN A
+
+[Answer Section]
+ocsp2.globalsign.com. 14717 IN CNAME global.prd.cdn.globalsign.com.
+global.prd.cdn.globalsign.com. 177 IN CNAME prod.globalsign.map.fastly.net.
+prod.globalsign.map.fastly.net. 26 IN A 199.232.18.133
+====================
+
+Timestamp: 2024-10-16 21:29:00
+SrcIP: 192.168.1.102
+DstIP: 192.168.1.1
+SrcPort: UDP/52000
+DstPort: UDP/53
+Identifier: 0x398D
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+
+[Question Section]
+r10.o.lencr.org. IN A
+====================
+
+Timestamp: 2024-10-16 21:29:01
+SrcIP: 192.168.1.1
+DstIP: 192.168.1.102
+SrcPort: UDP/53
+DstPort: UDP/52000
+Identifier: 0x398D
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=1, AD=0, CD=0, RCODE=0
+
+[Question Section]
+r10.o.lencr.org. IN A
+
+[Answer Section]
+r10.o.lencr.org. 198 IN CNAME o.lencr.edgesuite.net.
+o.lencr.edgesuite.net. 14596 IN CNAME a1887.dscq.akamai.net.
+a1887.dscq.akamai.net. 8 IN A 2.16.2.75
+a1887.dscq.akamai.net. 8 IN A 2.16.2.73
+====================

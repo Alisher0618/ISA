@@ -1,0 +1,53 @@
+Timestamp: 2024-10-25 12:28:58
+SrcIP: 172.19.121.89
+DstIP: 172.19.112.1
+SrcPort: UDP/44152
+DstPort: UDP/53
+Identifier: 0x4268
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+
+[Question Section]
+kazi.fit.vutbr.cz. IN MX
+====================
+
+Timestamp: 2024-10-25 12:28:58
+SrcIP: 172.19.112.1
+DstIP: 172.19.121.89
+SrcPort: UDP/53
+DstPort: UDP/44152
+Identifier: 0x4268
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=1, AD=0, CD=0, RCODE=0
+
+[Question Section]
+kazi.fit.vutbr.cz. IN MX
+====================
+
+Timestamp: 2024-10-25 12:29:22
+SrcIP: 172.19.121.89
+DstIP: 172.19.112.1
+SrcPort: UDP/36437
+DstPort: UDP/53
+Identifier: 0x1DB2
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+
+[Question Section]
+google.com. IN CNAME
+====================
+
+Timestamp: 2024-10-25 12:29:22
+SrcIP: 172.19.112.1
+DstIP: 172.19.121.89
+SrcPort: UDP/53
+DstPort: UDP/36437
+Identifier: 0x1DB2
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=1, AD=0, CD=0, RCODE=0
+
+[Question Section]
+google.com. IN CNAME
+
+[Authority Section]
+google.com. 40420 IN NS ns3.google.com.
+google.com. 40420 IN NS ns2.google.com.
+google.com. 40420 IN NS ns4.google.com.
+google.com. 40420 IN NS ns1.google.com.
+====================

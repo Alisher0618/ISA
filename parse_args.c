@@ -11,7 +11,6 @@
 // sudo ./dns-monitor -i eth0 -v -d text.txt -t text1.txt
 // sudo ./dns-monitor -p test.pcapng -v -d text.txt -t text1.txt
 
-
 /**
  * @brief Function for printing useful information
  */

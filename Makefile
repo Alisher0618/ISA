@@ -1,34 +1,37 @@
 # Compiler and flags
 CC = gcc
-CFLAGS = -g -std=gnu17 -Wall -Wextra -pedantic  # Debugging info (-g) and strict warnings
+CFLAGS = -g -std=gnu17 -Wall -Wextra -pedantic
 
 # Linker flags
-LDFLAGS = -lpcap  # Linker flag for the pcap library (for packet capture)
+LDFLAGS = -lpcap
 
 # Source files and headers
 SRCS = dns-monitor.c parse_args.c
-HEADERS = dns-monitor.h parse_args.h lib.h
+HEADERS = dns-monitor.h parse_args.h
 
-# Object files (generated from source files)
+# Object files
 OBJS = $(SRCS:.c=.o)
 
 # Executable name
 TARGET = dns-monitor
 
-# Default target (builds the executable)
+# Default target
 all: $(TARGET)
 
-# Rule to create the executable by linking object files
+# Rule to link object files into the executable
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) -o $(TARGET) $(LDFLAGS)
 
-# Rule to compile .c files into .o object files
+# Rule to compile .c files into .o files
 %.o: %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Clean up object files and executable
+# Rule to create a tarball for submission
+pack:
+	tar -cf xmazhi00.tar dns-monitor.c dns-monitor.h parse_args.c parse_args.h manual.pdf Makefile README pcap_files pcap_output
+
+# Clean up
 clean:
 	rm -f $(OBJS) $(TARGET)
 
-# Phony targets (to avoid conflicts with filenames)
-.PHONY: all clean
+.PHONY: all clean pack

@@ -17,10 +17,8 @@
 #include <resolv.h>
 #include "parse_args.h"
 
-#define ETHERTYPE_IP 0x0800
 #define SKIP_IF_ETHERNET 42
 #define SKIP_IF_SLL 44
-#define DNS_HEADER_SIZE 12
 #define SLL 0x8000
 #define SIZE 256
 
@@ -39,15 +37,12 @@ struct InputData input_data;
 pcap_t *handle;           
 struct bpf_program fp;
 
-volatile int running = 1; 
 int in_offline = 0;
 int allowed_types[7] = {1, 2, 5, 6, 15, 28, 33};
 int num_of_info = 0;
 int write_domains;
 int write_translations;
 int jump_to_dns;
-
-int unsupported_type = 0;
 
 /**
  * @brief Function to gracefully terminate program if a certain signal has been received
@@ -171,7 +166,6 @@ int isAllowedType(int checkType){
             return 1;
         }
     }
-    
     return 0;
 }
 
@@ -187,14 +181,11 @@ int is_soa;
  * @param domain_name 
  * @return const uint8_t* 
  */
-const uint8_t *extract_domain_name(const uint8_t *packet, const uint8_t *reader, char *domain_name) {
+const uint8_t *receive_domain(const uint8_t *packet, const uint8_t *reader, char *domain_name) {
     int p = 0;  
     jumped = 0;
     const uint8_t *orig_reader = reader;
-    //char next[SIZE] = {0};
     int offset;
-    //int step = 0;
-
     int one_jump = 1;
     while (*reader != 0) {
         if ((*reader & 0xC0) == 0xC0){ 
@@ -207,28 +198,18 @@ const uint8_t *extract_domain_name(const uint8_t *packet, const uint8_t *reader,
             jumped = 1;       
         } else {
             for (int i = 0; i < *reader; i++) {
-                //next[step++] = *(reader + 1 + i);
                 domain_name[p++] = *(reader + 1 + i);
             }
-            //next[step++] = '.';  
             domain_name[p++] = '.';
 
             reader += *reader + 1; 
         }
     }   
-
     domain_name[p] = '\0';
 
     if (jumped) {
-        /*if (num == 1) {
-            //printf("\n%02x %02x %02x %02x %d\n", orig_reader[0 - 1], orig_reader[1], orig_reader[2], orig_reader[3], was_in_else);
-            return orig_reader + 2;
-        }else{
-            return tmp_reader + 2;
-        }*/
         return orig_reader + 2;
     }
-
     return reader + 1;
 }
 
@@ -255,7 +236,7 @@ void print_domains(unsigned short type, unsigned short length, const uint8_t *rd
     }
     else if (type == 2 && length > 0) { // NS record
         char ns_domain_name[SIZE];
-        extract_domain_name(packet + jump_to_dns, rdata, ns_domain_name);
+        receive_domain(packet + jump_to_dns, rdata, ns_domain_name);
 
         if(write_domains){
             fclose(file_domains);
@@ -286,25 +267,25 @@ void print_domains(unsigned short type, unsigned short length, const uint8_t *rd
         const uint8_t *mx_data = rdata + 2; 
 
         char mx_domain_name[SIZE];
-        mx_data = extract_domain_name(packet + jump_to_dns, mx_data, mx_domain_name);
+        mx_data = receive_domain(packet + jump_to_dns, mx_data, mx_domain_name);
         printf("%u %s\n", mx_priority, mx_domain_name);
     }
     else if (type == 5 && length > 0) { // CNAME record
         char cname_domain_name[SIZE];
         const uint8_t *cname_data = rdata;
-        cname_data = extract_domain_name(packet + jump_to_dns, cname_data, cname_domain_name);
+        cname_data = receive_domain(packet + jump_to_dns, cname_data, cname_domain_name);
         printf("%s\n", cname_domain_name);  
     }
     else if (type == 6) { // SOA record
         char mname[SIZE], rname[SIZE];
         const uint8_t *vdata = rdata; 
         is_soa = 1;
-        vdata = extract_domain_name(packet + jump_to_dns, vdata, mname); // Primary NS
+        vdata = receive_domain(packet + jump_to_dns, vdata, mname); // Primary NS
         if(jumped){
-            vdata = extract_domain_name(packet + jump_to_dns, vdata, rname); // Responsible authority's mailbox
+            vdata = receive_domain(packet + jump_to_dns, vdata, rname); // Responsible authority's mailbox
             jumped = 0;
         }else{
-            vdata = extract_domain_name(packet + jump_to_dns, vdata, rname); // Responsible authority's mailbox
+            vdata = receive_domain(packet + jump_to_dns, vdata, rname); // Responsible authority's mailbox
         }
         is_soa = 0;
 
@@ -329,277 +310,10 @@ void print_domains(unsigned short type, unsigned short length, const uint8_t *rd
         adata += 2; // skipping port
         
         char srv_domain_name[SIZE];
-        adata = extract_domain_name(packet + jump_to_dns, adata, srv_domain_name);
+        adata = receive_domain(packet + jump_to_dns, adata, srv_domain_name);
 
         printf("%s\n", srv_domain_name);
     }
-}
-
-/**
- * @brief Function for processing answer section of DNS package
- * 
- * @param number 
- * @param packet 
- * @param reader 
- * @param domain_name 
- * @return const uint8_t* 
- */
-const uint8_t *question_section(int number, const uint8_t *packet, const uint8_t *reader, char *domain_name){
-    int printSection = 1;
-    for (int i = 0; i < number; i++) {
-        reader = extract_domain_name(packet, reader, domain_name);
-        unsigned short qtype = ntohs(*(unsigned short *)reader);
-        reader += 2;
-        unsigned short qclass = ntohs(*(unsigned short *)reader);
-        reader += 2; 
-
-        if(isAllowedType(qtype)){
-            if(printSection){
-                printf("\n[Question Section]\n");
-                printSection = 0;
-            }
-
-            if(write_domains){
-                fclose(file_domains);
-                file_domains = fopen(input_data.domainsfile, "r");
-
-                write_to_domain(domain_name);
-            }
-            
-            printf("%s ", domain_name);
-            if(qclass == 1){
-                printf("IN ");
-            }
-
-            if(qtype == 1){
-                printf("A\n");
-            }else if(qtype == 2){
-                printf("NS\n");
-            }else if(qtype == 5){
-                printf("CNAME\n");
-            }else if(qtype == 6){
-                printf("SOA\n");
-            }else if(qtype == 15){
-                printf("MX\n");
-            }else if(qtype == 28){
-                printf("AAAA\n");
-            }else if(qtype == 33){
-                printf("SRV\n");
-            }
-        }else{
-            //printf("here\n");
-            unsupported_type = 0;
-        }
-    }
-
-    return reader;
-}
-
-/**
- * @brief Function for processing answer section of DNS package
- * 
- * @param number 
- * @param packet 
- * @param reader 
- * @param domain_name 
- * @return const uint8_t* 
- */
-const uint8_t *answer_section(int number, const uint8_t *packet, const uint8_t *reader, char *domain_name){
-    int printSection = 1;
-    for (int i = 0; i < number; i++) {
-        
-        reader = extract_domain_name(packet + jump_to_dns, reader, domain_name);
-        unsigned short atype = ntohs(*(unsigned short *)reader);
-        reader += 2;
-        unsigned short aclass = ntohs(*(unsigned short *)reader);
-        reader += 2; 
-        unsigned int ttl = ntohl(*(unsigned int *)reader);
-        reader += 4; 
-        unsigned short rdlength = ntohs(*(unsigned short *)reader);
-        reader += 2;
-
-        const uint8_t *rdata = reader; 
-        
-        reader += rdlength;
-        if(isAllowedType(atype)){
-            if(printSection){
-                printf("\n[Answer Section]\n");
-                printSection = 0;
-            }
-
-            if(write_domains){
-                fclose(file_domains);
-                file_domains = fopen(input_data.domainsfile, "r");
-
-                write_to_domain(domain_name);
-            }
-
-            printf("%s ", domain_name);
-            printf("%u ", ttl);
-            if(aclass == 1){
-                printf("IN ");
-            }
-
-            if(atype == 1){
-                printf("A ");
-            }else if(atype == 2){
-                printf("NS ");
-            }else if(atype == 5){
-                printf("CNAME ");
-            }else if(atype == 6){
-                printf("SOA ");
-            }else if(atype == 15){
-                printf("MX ");
-            }else if(atype == 28){
-                printf("AAAA ");
-            }else if(atype == 33){
-                printf("SRV ");
-            }
-
-            print_domains(atype, rdlength, rdata, packet, domain_name);
-        }
-
-    }
-    return reader;
-
-}
-
-/**
- * @brief Function for processing authority section of DNS package
- * 
- * @param number 
- * @param packet 
- * @param reader 
- * @param domain_name 
- * @return const uint8_t* 
- */
-const uint8_t *authority_section(int number, const uint8_t *packet, const uint8_t *reader, char *domain_name){
-    int printSection = 1;
-    for (int i = 0; i < number; i++) {
-        reader = extract_domain_name(packet + jump_to_dns, reader, domain_name);
-        unsigned short atype = ntohs(*(unsigned short *)reader);
-        reader += 2; 
-        unsigned short aclass = ntohs(*(unsigned short *)reader);
-        reader += 2;
-        unsigned int ttl = ntohl(*(unsigned int *)reader);
-        reader += 4; 
-        unsigned short rdlength = ntohs(*(unsigned short *)reader);
-        reader += 2; 
-
-        const uint8_t *rdata = reader;
-        reader += rdlength;
-        
-        if(isAllowedType(atype)){
-            if(printSection){
-                printf("\n[Authority  Section]\n");
-                printSection = 0;
-            }
-
-            if(write_domains){
-                fclose(file_domains);
-                file_domains = fopen(input_data.domainsfile, "r");
-
-                write_to_domain(domain_name);
-            }
-            
-            printf("%s ", domain_name);
-            printf("%u ", ttl);
-            if(aclass == 1){
-                printf("IN ");
-            }
-
-            if(atype == 1){
-                printf("A ");
-            }else if(atype == 2){
-                printf("NS ");
-            }else if(atype == 5){
-                printf("CNAME ");
-            }else if(atype == 6){
-                printf("SOA ");
-            }else if(atype == 15){
-                printf("MX ");
-            }else if(atype == 28){
-                printf("AAAA ");
-            }else if(atype == 33){
-                printf("SRV ");
-            }
-
-            print_domains(atype, rdlength, rdata, packet, domain_name);
-        }
- 
-    }
-
-    return reader;
-}
-
-/**
- * @brief Function for processing additional section of DNS package
- * 
- * @param number
- * @param packet 
- * @param reader 
- * @param domain_name 
- * @return const uint8_t* 
- */
-const uint8_t *additional_section(int number, const uint8_t *packet, const uint8_t *reader, char *domain_name){
-    int printSection = 1;
-    for (int i = 0; i < number; i++) {
-        //printf("\n%02x %02x %02x %02x\n", (packet + jump_to_dns)[0], (packet + jump_to_dns)[1], (packet + jump_to_dns)[2], (packet + jump_to_dns)[3]);
-        //printf("\n%02x %02x %02x %02x\n", reader[0], reader[1], reader[2], reader[3]);
-        reader = extract_domain_name(packet + jump_to_dns, reader, domain_name);        
-        unsigned short atype = ntohs(*(unsigned short *)reader);
-        reader += 2;
-        unsigned short aclass = ntohs(*(unsigned short *)reader);
-        reader += 2;
-        unsigned int ttl = ntohl(*(unsigned int *)reader);
-        reader += 4;
-        unsigned short rdlength = ntohs(*(unsigned short *)reader);
-        reader += 2;
-
-        const uint8_t *rdata = reader;
-        reader += rdlength;
-        //printf("atype: %d\n", atype);
-        if(isAllowedType(atype)){
-            if(printSection){
-                printf("\n[Additional  Section]\n");
-                printSection = 0;
-            }
-
-            if(write_domains){
-                fclose(file_domains);
-                file_domains = fopen(input_data.domainsfile, "r");
-
-                write_to_domain(domain_name);
-            }
-            
-            printf("%s ", domain_name);
-            printf("%u ", ttl);
-            if(aclass == 1){
-                printf("IN ");
-            }
-
-            if(atype == 1){
-                printf("A ");
-            }else if(atype == 2){
-                printf("NS ");
-            }else if(atype == 5){
-                printf("CNAME ");
-            }else if(atype == 6){
-                printf("SOA ");
-            }else if(atype == 15){
-                printf("MX ");
-            }else if(atype == 28){
-                printf("AAAA ");
-            }else if(atype == 33){
-                printf("SRV ");
-            }
-
-            print_domains(atype, rdlength, rdata, packet, domain_name);
-        }
-
-    }
-
-    return reader;
 }
 
 const uint8_t *sections_handle(int number, const uint8_t *packet, const uint8_t *reader, char *domain_name, char *section){
@@ -608,7 +322,7 @@ const uint8_t *sections_handle(int number, const uint8_t *packet, const uint8_t 
     unsigned short atype, aclass, rdlength;
     const uint8_t *rdata;
     for (int i = 0; i < number; i++) {
-        reader = extract_domain_name(packet + jump_to_dns, reader, domain_name);        
+        reader = receive_domain(packet + jump_to_dns, reader, domain_name);        
         atype = ntohs(*(unsigned short *)reader);
         reader += 2;
         aclass = ntohs(*(unsigned short *)reader);
@@ -723,14 +437,14 @@ void packet_handler(uint8_t *args, const struct pcap_pkthdr *header, const uint8
     // UDP header is after IP header
     const uint8_t *udp_header;
     if(ip_header[0] == 0x45){ // IPv4
-        if (ip_header[9] != 17) { // 17 - это номер для UDP
+        if (ip_header[9] != 17) {
             fprintf(stderr, "ERROR: Protocol is not udp\n");
             exit(EXIT_FAILURE);
         }
         int skip_bytes = interface_type == 0 ? 14 : 16;
 
         ipv4_h = (struct ip *)(packet + skip_bytes);
-        udp_h = (struct udphdr *)(packet + skip_bytes + ipv4_h->ip_hl * 4);  // Jump to UDP header
+        udp_h = (struct udphdr *)(packet + skip_bytes + ipv4_h->ip_hl * 4);
         dns_h = (struct dns_header *)(packet + skip_bytes + ipv4_h->ip_hl * 4 + sizeof(struct udphdr)); 
 
         udp_header = ip_header + 20;
@@ -740,14 +454,14 @@ void packet_handler(uint8_t *args, const struct pcap_pkthdr *header, const uint8
         unsigned short dst_port = ntohs(*(unsigned short * )(udp_header + 2));
         
         if (src_port != 53 && dst_port != 53) {
-            fprintf(stderr, "ERROR: It is not udp package\n");
+            fprintf(stderr, "ERROR: It is not UDP package\n");
             exit(EXIT_FAILURE);
         }
 
     }
     else if((ip_header[0] & 0xF0) == 0x60){
         if (ip_header[6] != 17) {
-            fprintf(stderr, "ERROR: Protocol is not udp\n");
+            fprintf(stderr, "ERROR: Protocol is not UDP\n");
             exit(EXIT_FAILURE);
         }
         jump_to_dns += 20; // add another 20 bytes
@@ -826,25 +540,21 @@ void packet_handler(uint8_t *args, const struct pcap_pkthdr *header, const uint8
         
         // Question Section
         if(ntohs(dns->qdcount) >= 1){
-            //reader = question_section(ntohs(dns->qdcount), packet, reader, domain_name);
             reader = sections_handle(ntohs(dns->qdcount), packet, reader, domain_name, "ques");
         }
 
         // Answer Section
         if(ntohs(dns->ancount) >= 1){
-            //reader = answer_section(ntohs(dns->ancount), packet, reader, domain_name);
             reader = sections_handle(ntohs(dns->ancount), packet, reader, domain_name, "answ");
         }
 
         // Authority Section
         if(ntohs(dns->nscount) >= 1){
-            //reader = authority_section(ntohs(dns->nscount), packet, reader, domain_name);
             reader = sections_handle(ntohs(dns->nscount), packet, reader, domain_name, "auth");
         }
 
         // Additional Section
         if(ntohs(dns->arcount) >= 1){
-            //reader = additional_section(ntohs(dns->arcount), packet, reader, domain_name);
             reader = sections_handle(ntohs(dns->arcount), packet, reader, domain_name, "addi");
         }
 

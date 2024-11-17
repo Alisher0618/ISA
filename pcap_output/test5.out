@@ -1,0 +1,123 @@
+Timestamp: 2024-10-29 14:50:50
+SrcIP: 172.19.121.89
+DstIP: 172.19.112.1
+SrcPort: UDP/60135
+DstPort: UDP/53
+Identifier: 0xB1A6
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=1, CD=0, RCODE=0
+
+[Question Section]
+google.com. IN MX
+====================
+
+Timestamp: 2024-10-29 14:50:50
+SrcIP: 172.19.112.1
+DstIP: 172.19.121.89
+SrcPort: UDP/53
+DstPort: UDP/60135
+Identifier: 0xB1A6
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=1, CD=0, RCODE=0
+
+[Question Section]
+google.com. IN MX
+
+[Answer Section]
+google.com. 0 IN MX 10 smtp.google.com.
+smtp.google.com. 0 IN A 142.250.27.26
+smtp.google.com. 0 IN A 142.250.27.27
+smtp.google.com. 0 IN A 142.250.102.26
+smtp.google.com. 0 IN A 142.250.102.27
+====================
+
+Timestamp: 2024-10-29 14:51:07
+SrcIP: 172.19.121.89
+DstIP: 172.19.112.1
+SrcPort: UDP/40880
+DstPort: UDP/53
+Identifier: 0xEF09
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=1, CD=0, RCODE=0
+
+[Question Section]
+google.com. IN MX
+====================
+
+Timestamp: 2024-10-29 14:51:07
+SrcIP: 172.19.112.1
+DstIP: 172.19.121.89
+SrcPort: UDP/53
+DstPort: UDP/40880
+Identifier: 0xEF09
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=1, CD=0, RCODE=0
+
+[Question Section]
+google.com. IN MX
+
+[Answer Section]
+google.com. 0 IN MX 10 smtp.google.com.
+smtp.google.com. 0 IN A 142.250.27.26
+smtp.google.com. 0 IN A 142.250.27.27
+smtp.google.com. 0 IN A 142.250.102.26
+smtp.google.com. 0 IN A 142.250.102.27
+====================
+
+Timestamp: 2024-10-29 14:51:19
+SrcIP: 172.19.121.89
+DstIP: 172.19.112.1
+SrcPort: UDP/36530
+DstPort: UDP/53
+Identifier: 0x8337
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=1, CD=0, RCODE=0
+
+[Question Section]
+google.com. IN MX
+====================
+
+Timestamp: 2024-10-29 14:51:19
+SrcIP: 172.19.112.1
+DstIP: 172.19.121.89
+SrcPort: UDP/53
+DstPort: UDP/36530
+Identifier: 0x8337
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=1, CD=0, RCODE=0
+
+[Question Section]
+google.com. IN MX
+
+[Answer Section]
+google.com. 0 IN MX 10 smtp.google.com.
+smtp.google.com. 0 IN A 142.250.27.26
+smtp.google.com. 0 IN A 142.250.27.27
+smtp.google.com. 0 IN A 142.250.102.26
+smtp.google.com. 0 IN A 142.250.102.27
+====================
+
+Timestamp: 2024-10-29 14:51:56
+SrcIP: 172.19.121.89
+DstIP: 172.19.112.1
+SrcPort: UDP/52330
+DstPort: UDP/53
+Identifier: 0x57BB
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=1, CD=0, RCODE=0
+
+[Question Section]
+google.com. IN MX
+====================
+
+Timestamp: 2024-10-29 14:51:56
+SrcIP: 172.19.112.1
+DstIP: 172.19.121.89
+SrcPort: UDP/53
+DstPort: UDP/52330
+Identifier: 0x57BB
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=1, CD=0, RCODE=0
+
+[Question Section]
+google.com. IN MX
+
+[Answer Section]
+google.com. 0 IN MX 10 smtp.google.com.
+smtp.google.com. 0 IN A 142.250.27.26
+smtp.google.com. 0 IN A 142.250.27.27
+smtp.google.com. 0 IN A 142.250.102.26
+smtp.google.com. 0 IN A 142.250.102.27
+====================

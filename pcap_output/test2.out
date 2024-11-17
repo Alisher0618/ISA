@@ -1,0 +1,117 @@
+Timestamp: 2024-10-18 19:11:26
+SrcIP: 192.168.1.102
+DstIP: 192.168.1.1
+SrcPort: UDP/64303
+DstPort: UDP/53
+Identifier: 0x6572
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+
+[Question Section]
+az764295.vo.msecnd.net. IN A
+====================
+
+Timestamp: 2024-10-18 19:11:26
+SrcIP: 192.168.1.102
+DstIP: 192.168.1.1
+SrcPort: UDP/54151
+DstPort: UDP/53
+Identifier: 0x0EF7
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+====================
+
+Timestamp: 2024-10-18 19:11:26
+SrcIP: 192.168.1.1
+DstIP: 192.168.1.102
+SrcPort: UDP/53
+DstPort: UDP/64303
+Identifier: 0x6572
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=1, AD=0, CD=0, RCODE=0
+
+[Question Section]
+az764295.vo.msecnd.net. IN A
+
+[Answer Section]
+az764295.vo.msecnd.net. 3545 IN CNAME cs22.wpc.v0cdn.net.
+cs22.wpc.v0cdn.net. 937 IN A 152.199.19.160
+====================
+
+Timestamp: 2024-10-18 19:11:26
+SrcIP: 192.168.1.1
+DstIP: 192.168.1.102
+SrcPort: UDP/53
+DstPort: UDP/54151
+Identifier: 0x0EF7
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=1, AD=0, CD=0, RCODE=0
+
+[Answer Section]
+az764295.vo.msecnd.net. 3555 IN CNAME cs22.wpc.v0cdn.net.
+
+[Additional Section]
+cs22.wpc.v0cdn.net. 937 IN A 152.199.19.160
+====================
+
+Timestamp: 2024-10-18 19:12:10
+SrcIP: 192.168.1.102
+DstIP: 192.168.1.1
+SrcPort: UDP/54891
+DstPort: UDP/53
+Identifier: 0xF16D
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+
+[Question Section]
+downloads.upd.kaspersky.com. IN AAAA
+====================
+
+Timestamp: 2024-10-18 19:12:10
+SrcIP: 192.168.1.102
+DstIP: 192.168.1.1
+SrcPort: UDP/54892
+DstPort: UDP/53
+Identifier: 0x4916
+Flags: QR=0, OPCODE=0, AA=0, TC=0, RD=1, RA=0, AD=0, CD=0, RCODE=0
+
+[Question Section]
+downloads.upd.kaspersky.com. IN A
+====================
+
+Timestamp: 2024-10-18 19:12:10
+SrcIP: 192.168.1.1
+DstIP: 192.168.1.102
+SrcPort: UDP/53
+DstPort: UDP/54892
+Identifier: 0x4916
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=1, AD=0, CD=0, RCODE=0
+
+[Question Section]
+downloads.upd.kaspersky.com. IN A
+
+[Answer Section]
+downloads.upd.kaspersky.com. 1889 IN CNAME prd.geo.kaspersky.com.
+prd.geo.kaspersky.com. 40 IN A 109.248.196.3
+prd.geo.kaspersky.com. 40 IN A 81.19.104.79
+prd.geo.kaspersky.com. 40 IN A 213.155.156.92
+prd.geo.kaspersky.com. 40 IN A 80.239.197.106
+prd.geo.kaspersky.com. 40 IN A 212.73.221.217
+====================
+
+Timestamp: 2024-10-18 19:12:10
+SrcIP: 192.168.1.1
+DstIP: 192.168.1.102
+SrcPort: UDP/53
+DstPort: UDP/54891
+Identifier: 0xF16D
+Flags: QR=1, OPCODE=0, AA=0, TC=0, RD=1, RA=1, AD=0, CD=0, RCODE=0
+
+[Question Section]
+downloads.upd.kaspersky.com. IN AAAA
+
+[Answer Section]
+downloads.upd.kaspersky.com. 1889 IN CNAME prd.geo.kaspersky.com.
+
+[Additional Section]
+prd.geo.kaspersky.com. 40 IN A 213.155.156.92
+prd.geo.kaspersky.com. 40 IN A 80.239.197.106
+prd.geo.kaspersky.com. 40 IN A 212.73.221.217
+prd.geo.kaspersky.com. 40 IN A 109.248.196.3
+prd.geo.kaspersky.com. 40 IN A 81.19.104.79
+====================
