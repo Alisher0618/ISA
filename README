@@ -1,32 +1,34 @@
-# ISA - Monitorování DNS komunikace
+# ISA - Network Applications and Network Administration
 
-Autor: Alisher Mazhirinov, xmazhi00 
+## Monitoring DNS Communication
 
-Datum: 18.11.2024
+Author: Alisher Mazhirinov, xmazhi00
 
-Cíl projektu:
-    Cílem projektu je implementovat program, který bude monitorovat DNS komunikaci 
-    na zvoleném rozhraní nebo z existujícího záznamu ve formátu PCAP. 
-    Nástroj zpracovává DNS zprávy a vypisuje zjištěné informace. 
-    Kromě toho umožňuje zjistit, jaká doménová jména se objevila ve zprávách 
-    a hledat překlady doménových jmen na IPv4/6 adresy.
+Date: 18.11.2024
 
-Odevzdane soubory: 
-    dns-monitor.c
-    dns-monitor.h
-    parse_args.c
-    parse_args.h
-    Makefile
-    
-    manual.pdf - manual k projektu
-    README - kratký popis projektu a odevzdaných souboru
-    
-    pcap_files - složka obsahující testovácí PCAP soubory
-    pcap_output - složka obsahující kompletní výpisy DNS komunikace
+Project Goal:
+The goal of the project is to implement a program that will monitor DNS communication
+on a selected interface or from an existing record in PCAP format.
+The tool processes DNS messages and lists the information found.
+In addition, it allows you to find out what domain names appeared in the messages
+and search for translations of domain names to IPv4/6 addresses.
 
-Příklad spuštění: 
-    make
-    ./dns-monitor -i eth0 -v
+Submitted files:
+dns-monitor.c
+dns-monitor.h
+parse_args.c
+parse_args.h
+Makefile
 
-Seznam rozšíření:
-    Bez rozšíření
+manual.pdf - project manual
+README - short description of the project and submitted files
+
+pcap_files - folder containing test PCAP files
+pcap_output - folder containing complete DNS communication logs
+
+Example run:
+make
+./dns-monitor -i eth0 -v
+
+Extension list:
+No extensions

@@ -425,6 +425,9 @@ void packet_handler(uint8_t *args, const struct pcap_pkthdr *header, const uint8
         jump_to_dns = SKIP_IF_SLL;
         interface_type = 1;
         ip_header = packet + 16;
+    }else{
+        fprintf(stderr, "Unsupported type\n");
+        exit(EXIT_FAILURE);
     }
 
 
